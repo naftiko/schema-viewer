@@ -4,7 +4,7 @@ import MonacoEditor from '@monaco-editor/react';
 import SchemaExplorer from './SchemaExplorer';
 import SchemaGraph from './SchemaGraph';
 import { parseSchema } from '../utils/schemaParser';
-import opencollectionSchema from '../schemas/opencollection.schema.json';
+import opencollectionSchema from '../schemas/capability-schema.json';
 
 const SchemaViewer = () => {
   const [schema, setSchema] = useState(null);
@@ -115,23 +115,6 @@ const SchemaViewer = () => {
             </h1>
             
             <div className="flex items-center gap-2">
-              <label className="px-3 py-1.5 text-base bg-blue-500 text-white hover:bg-blue-600 rounded-lg cursor-pointer transition-colors">
-                <input
-                  type="file"
-                  accept=".json"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
-                <Upload className="w-4 h-4 inline mr-1" />
-                Upload
-              </label>
-              
-              <button
-                onClick={handleUrlLoad}
-                className="px-3 py-1.5 text-base bg-green-500 text-white hover:bg-green-600 rounded-lg transition-colors"
-              >
-                Load URL
-              </button>
               
               {schema && (
                 <>
