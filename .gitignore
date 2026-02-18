@@ -2,6 +2,5 @@ node_modules
 .env
 .claude
 .DS_Store
-src/schemas/*
-!src/schemas/opencollection.schema.json
+src/schemas/opencollection.schema.json
 dist
