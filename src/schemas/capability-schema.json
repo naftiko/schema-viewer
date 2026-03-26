@@ -1,119 +1,125 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://naftiko.io/schemas/v0.4/capability.json",
-  "name": "Naftiko Capability Specification",
+  "$id": "https://naftiko.io/schemas/v1.0.0-alpha1/naftiko.json",
+  "name": "Naftiko Specification",
   "description": "This Schema should be used to describe and validate Naftiko Capabilities",
   "type": "object",
   "properties": {
     "naftiko": {
       "type": "string",
-      "description": "Version of the Naftiko schema",
-      "const": "0.4"
+      "description": "Version of the Naftiko specification",
+      "const": "1.0.0-alpha1"
     },
     "info": {
       "$ref": "#/$defs/Info"
     },
-    "externalRefs": {
+    "consumes": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/ExternalRef"
+        "oneOf": [
+          {
+            "$ref": "#/$defs/ConsumesHttp"
+          },
+          {
+            "$ref": "#/$defs/ImportedConsumesHttp"
+          }
+        ]
+      },
+      "minItems": 1
+    },
+    "binds": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Binding"
       },
       "minItems": 1,
-      "description": "List of external references for variable injection and resource linking."
+      "description": "List of external sources the capability binds to for variable injection."
     },
     "capability": {
       "$ref": "#/$defs/Capability"
     }
   },
-  "required": [
-    "naftiko",
-    "info",
-    "capability"
+  "oneOf": [
+    {
+      "required": [
+        "naftiko",
+        "capability"
+      ]
+    },
+    {
+      "required": [
+        "naftiko",
+        "consumes"
+      ]
+    }
   ],
   "additionalProperties": false,
   "$defs": {
-    "ExternalRef": {
-      "oneOf": [
-        {
-          "type": "object",
-          "description": "File-resolved external reference",
-          "properties": {
-            "name": {
-              "$ref": "#/$defs/IdentifierKebab",
-              "description": "A unique identifier for this external reference."
-            },
-            "description": {
-              "type": "string",
-              "description": "Used to provide *meaningful* information about the external reference. Remember, in a world of agents, context is king."
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "environment"
-              ]
-            },
-            "resolution": {
-              "type": "string",
-              "description": "The resolution strategy for this external reference. 'file' means that the reference will be resolved from a file at the specified URI during capability loading, and the extracted variables will be injected for use in the capability definition. 'runtime' means that the reference will be resolved at runtime from the execution context (e.g. environment variables, secrets manager, or any other context store), and the extracted variables will be injected for use in the capability definition. Default value is 'runtime'.",
-              "const": "file"
-            },
-            "uri": {
-              "type": "string"
-            },
-            "keys": {
-              "$ref": "#/$defs/ExternalRefKeys",
-              "description": "Map of key-value pairs that define the variables to be injected from the resolved external reference. Each key is the variable name used for injection, each value is the corresponding key in the resolved file content. E.g. {\"notion_token\": \"NOTION_INTEGRATION_TOKEN\"} means that the value of the NOTION_INTEGRATION_TOKEN field in the resolved JSON file will be injected as {{notion_token}} in the capability definition."
-            }
-          },
-          "required": [
-            "name",
-            "description",
-            "type",
-            "resolution",
-            "uri",
-            "keys"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "description": "Runtime-resolved external reference (default)",
-          "properties": {
-            "name": {
-              "$ref": "#/$defs/IdentifierKebab",
-              "description": "A unique identifier for this external reference."
-            },
-            "type": {
-              "type": "string",
-              "enum": [
-                "variables"
-              ]
-            },
-            "resolution": {
-              "type": "string",
-              "description": "The resolution strategy for this external reference. 'file' means that the reference will be resolved from a file at the specified URI during capability loading, and the extracted variables will be injected for use in the capability definition. 'runtime' means that the reference will be resolved at runtime from the execution context (e.g. environment variables, secrets manager, or any other context store), and the extracted variables will be injected for use in the capability definition. Default value is 'runtime'.",
-              "const": "runtime"
-            },
-            "keys": {
-              "$ref": "#/$defs/ExternalRefKeys",
-              "description": "Map of key-value pairs that define the variables to be injected from the external reference at runtime. Each key is the variable name used for injection, each value is the corresponding key in the runtime context. E.g. {\"notion_token\": \"NOTION_INTEGRATION_TOKEN\"} means that the value of the NOTION_INTEGRATION_TOKEN field in the runtime context will be injected as {{notion_token}} in the capability definition."
-            }
-          },
-          "required": [
-            "name",
-            "type",
-            "resolution",
-            "keys"
-          ],
-          "additionalProperties": false
-        }
-      ]
-    },
-    "ExternalRefKeys": {
+    "ImportedConsumesHttp": {
       "type": "object",
-      "description": "Map of key-value pairs that define the variables to be injected from the external reference. Each key is the variable name used for injection, each value is the corresponding key in the resolved file content or runtime context. E.g. {\"notion_token\": \"NOTION_INTEGRATION_TOKEN\"} means that the value of the NOTION_INTEGRATION_TOKEN field in the resolved JSON file or runtime context will be injected as {{notion_token}} in the capability definition.",
+      "description": "A globally imported consumed HTTP adapter. Discriminant: 'location' field present.",
+      "properties": {
+        "location": {
+          "type": "string",
+          "description": "URI to the source consumes file"
+        },
+        "import": {
+          "$ref": "#/$defs/IdentifierKebab",
+          "description": "Namespace in the source consumes file"
+        },
+        "as": {
+          "$ref": "#/$defs/IdentifierKebab",
+          "description": "Optional local alias for the imported namespace"
+        }
+      },
+      "required": [
+        "location",
+        "import"
+      ],
+      "additionalProperties": false
+    },
+    "Binding": {
+      "type": "object",
+      "description": "Declares that the capability binds to an external source of variables. Variables declared via 'keys' are injected using mustache-style expressions.",
+      "properties": {
+        "namespace": {
+          "$ref": "#/$defs/IdentifierKebab",
+          "description": "Unique identifier for this binding. Used as qualifier in expressions for disambiguation."
+        },
+        "description": {
+          "type": "string",
+          "description": "A meaningful description of the binding's purpose. In a world of agents, context is king."
+        },
+        "location": {
+          "$ref": "#/$defs/UriLocation",
+          "description": "URI identifying the value provider. The URI scheme expresses the resolution strategy (file://, vault://, github-secrets://, k8s-secret://, etc.). When omitted, values are injected by the runtime environment."
+        },
+        "keys": {
+          "$ref": "#/$defs/BindingKeys",
+          "description": "Map of variable names to keys in the resolved source. Each key is the variable name used for injection, each value is the corresponding key in the provider."
+        }
+      },
+      "required": [
+        "namespace",
+        "keys"
+      ],
+      "additionalProperties": false
+    },
+    "UriLocation": {
+      "type": "string",
+      "pattern": "^[a-zA-Z][a-zA-Z0-9+.-]*://",
+      "description": "A URI with an explicit scheme identifying the resource provider."
+    },
+    "BindingVariableName": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*$",
+      "description": "Variable name for binding injection (SCREAMING_SNAKE_CASE). Enforced for visual distinction from declared parameters in expressions."
+    },
+    "BindingKeys": {
+      "type": "object",
+      "description": "Map of variable names (SCREAMING_SNAKE_CASE) to source keys in the provider.",
       "propertyNames": {
-        "$ref": "#/$defs/IdentifierExtended"
+        "$ref": "#/$defs/BindingVariableName"
       },
       "additionalProperties": {
         "$ref": "#/$defs/IdentifierExtended"
@@ -145,7 +151,8 @@
             "header",
             "path",
             "cookie",
-            "body"
+            "body",
+            "environment"
           ]
         },
         "value": {
@@ -258,6 +265,26 @@
         "mapping": {
           "type": "string",
           "description": "JsonPath expression to extract the value. E.g. $.properties.Name.title[0].text.content"
+        },
+        "const": {
+          "description": "Optional constant value. If provided, it will override the mapping and the value will be injected as-is.",
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "array"
+            },
+            {
+              "type": "object"
+            }
+          ]
         }
       },
       "required": [
@@ -274,10 +301,20 @@
             "type": {
               "const": "string"
             },
-            "mapping": true
+            "mapping": true,
+            "const": true
           },
-          "required": [
-            "mapping"
+          "oneOf": [
+            {
+              "required": [
+                "mapping"
+              ]
+            },
+            {
+              "required": [
+                "const"
+              ]
+            }
           ],
           "unevaluatedProperties": false
         }
@@ -293,10 +330,20 @@
             "type": {
               "const": "number"
             },
-            "mapping": true
+            "mapping": true,
+            "const": true
           },
-          "required": [
-            "mapping"
+          "oneOf": [
+            {
+              "required": [
+                "mapping"
+              ]
+            },
+            {
+              "required": [
+                "const"
+              ]
+            }
           ],
           "unevaluatedProperties": false
         }
@@ -312,10 +359,20 @@
             "type": {
               "const": "boolean"
             },
-            "mapping": true
+            "mapping": true,
+            "const": true
           },
-          "required": [
-            "mapping"
+          "oneOf": [
+            {
+              "required": [
+                "mapping"
+              ]
+            },
+            {
+              "required": [
+                "const"
+              ]
+            }
           ],
           "unevaluatedProperties": false
         }
@@ -332,6 +389,7 @@
               "const": "object"
             },
             "mapping": true,
+            "const": true,
             "properties": {
               "type": "object",
               "description": "A map of named properties. Each key is a property name, each value is a typed output parameter.",
@@ -358,6 +416,7 @@
               "const": "array"
             },
             "mapping": true,
+            "const": true,
             "items": {
               "$ref": "#/$defs/MappedItemArray"
             }
@@ -606,11 +665,29 @@
       "type": "object",
       "description": "Capability technical configuration",
       "properties": {
+        "binds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Binding"
+          },
+          "minItems": 1,
+          "description": "External sources the capability binds to for variable injection."
+        },
         "exposes": {
           "type": "array",
           "description": "List of exposed server adapters",
           "items": {
-            "$ref": "#/$defs/ExposesApi"
+            "oneOf": [
+              {
+                "$ref": "#/$defs/ExposesRest"
+              },
+              {
+                "$ref": "#/$defs/ExposesMcp"
+              },
+              {
+                "$ref": "#/$defs/ExposesSkill"
+              }
+            ]
           },
           "minItems": 1
         },
@@ -618,24 +695,45 @@
           "type": "array",
           "description": "Consumed client adapters",
           "items": {
-            "$ref": "#/$defs/ConsumesHttp"
+            "oneOf": [
+              {
+                "$ref": "#/$defs/ConsumesHttp"
+              },
+              {
+                "$ref": "#/$defs/ImportedConsumesHttp"
+              }
+            ]
           },
           "minItems": 1
         }
       },
-      "required": [
-        "exposes",
-        "consumes"
+      "anyOf": [
+        {
+          "required": [
+            "exposes"
+          ]
+        },
+        {
+          "required": [
+            "consumes"
+          ]
+        },
+        {
+          "required": [
+            "exposes",
+            "consumes"
+          ]
+        }
       ],
       "additionalProperties": false
     },
-    "ExposesApi": {
+    "ExposesRest": {
       "type": "object",
-      "description": "API exposition configuration",
+      "description": "REST exposition configuration",
       "properties": {
         "type": {
           "type": "string",
-          "const": "api"
+          "const": "rest"
         },
         "address": {
           "$ref": "#/$defs/Address"
@@ -664,8 +762,466 @@
       "required": [
         "type",
         "port",
+        "namespace"
+      ],
+      "additionalProperties": false
+    },
+    "ExposesMcp": {
+      "type": "object",
+      "description": "MCP Server exposition configuration. Exposes tools, resources and prompts over MCP transport (Streamable HTTP or stdio).",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "mcp"
+        },
+        "transport": {
+          "type": "string",
+          "enum": [
+            "http",
+            "stdio"
+          ],
+          "default": "http",
+          "description": "The MCP transport to use. 'http' (default) exposes a Streamable HTTP server; 'stdio' uses stdin/stdout JSON-RPC for local IDE integration."
+        },
+        "address": {
+          "$ref": "#/$defs/Address"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "namespace": {
+          "$ref": "#/$defs/IdentifierKebab",
+          "description": "Unique identifier for this exposed MCP server"
+        },
+        "description": {
+          "type": "string",
+          "description": "A meaningful description of this MCP server's purpose. Used as the server instructions sent during MCP initialization."
+        },
+        "tools": {
+          "type": "array",
+          "description": "List of MCP tools exposed by this server",
+          "items": {
+            "$ref": "#/$defs/McpTool"
+          },
+          "minItems": 1
+        },
+        "resources": {
+          "type": "array",
+          "description": "List of MCP resources exposed by this server. Resources provide data that agents can read.",
+          "items": {
+            "$ref": "#/$defs/McpResource"
+          },
+          "minItems": 1
+        },
+        "prompts": {
+          "type": "array",
+          "description": "List of MCP prompt templates exposed by this server. Prompts are reusable templates with typed arguments.",
+          "items": {
+            "$ref": "#/$defs/McpPrompt"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "type",
         "namespace",
-        "resources"
+        "tools"
+      ],
+      "oneOf": [
+        {
+          "properties": {
+            "transport": {
+              "const": "stdio"
+            }
+          },
+          "required": [
+            "transport"
+          ],
+          "not": {
+            "required": [
+              "port"
+            ]
+          }
+        },
+        {
+          "properties": {
+            "transport": {
+              "const": "http"
+            }
+          },
+          "required": [
+            "port"
+          ]
+        }
+      ],
+      "additionalProperties": false
+    },
+    "McpTool": {
+      "type": "object",
+      "description": "An MCP tool definition. Each tool maps to one or more consumed HTTP operations.",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/IdentifierKebab",
+          "description": "Technical name for the tool. Used as the MCP tool name."
+        },
+        "label": {
+          "type": "string",
+          "description": "Human-readable display name of the tool. Mapped to MCP 'title' in tools/list responses."
+        },
+        "description": {
+          "type": "string",
+          "description": "A meaningful description of the tool. Used for agent discovery. Remember, in a world of agents, context is king."
+        },
+        "inputParameters": {
+          "type": "array",
+          "description": "Tool input parameters. These become the MCP tool's input schema (JSON Schema).",
+          "items": {
+            "$ref": "#/$defs/McpToolInputParameter"
+          }
+        },
+        "call": {
+          "type": "string",
+          "description": "For simple cases, the reference to the consumed operation. Format: {namespace}.{operationId}.",
+          "pattern": "^[a-zA-Z0-9-]+\\.[a-zA-Z0-9-]+$"
+        },
+        "with": {
+          "$ref": "#/$defs/WithInjector"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OperationStep"
+          },
+          "minItems": 1
+        },
+        "mappings": {
+          "type": "array",
+          "description": "Maps step outputs to the tool's output parameters.",
+          "items": {
+            "$ref": "#/$defs/StepOutputMapping"
+          }
+        },
+        "outputParameters": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "description"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "call"
+          ],
+          "type": "object",
+          "properties": {
+            "outputParameters": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/MappedOutputParameter"
+              }
+            }
+          }
+        },
+        {
+          "required": [
+            "steps"
+          ],
+          "type": "object",
+          "properties": {
+            "mappings": true,
+            "outputParameters": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/OrchestratedOutputParameter"
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "McpToolInputParameter": {
+      "type": "object",
+      "description": "Declares an input parameter for an MCP tool. These become properties in the tool's JSON Schema input definition.",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/IdentifierExtended",
+          "description": "Name of the parameter. Becomes a property name in the tool's input schema."
+        },
+        "type": {
+          "type": "string",
+          "description": "The expected data type of the parameter.",
+          "enum": [
+            "string",
+            "number",
+            "integer",
+            "boolean",
+            "array",
+            "object"
+          ]
+        },
+        "description": {
+          "type": "string",
+          "description": "A meaningful description of the parameter. Used for agent discovery and tool documentation."
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Whether the parameter is required. Defaults to true.",
+          "default": true
+        }
+      },
+      "required": [
+        "name",
+        "type",
+        "description"
+      ],
+      "additionalProperties": false
+    },
+    "McpResource": {
+      "type": "object",
+      "description": "An MCP resource definition. Exposes data that agents can read. Either dynamic (backed by consumed HTTP operations via call/steps) or static (served from local files via location).",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/IdentifierExtended",
+          "description": "Technical name for the resource. Used as identifier in MCP resource listings."
+        },
+        "label": {
+          "type": "string",
+          "description": "Human-readable display name of the resource. Mapped to MCP 'title' in protocol responses."
+        },
+        "uri": {
+          "type": "string",
+          "description": "The URI that identifies this resource in MCP. Can use any scheme (e.g. config://, docs://, data://). For resource templates, use {param} placeholders."
+        },
+        "description": {
+          "type": "string",
+          "description": "A meaningful description of the resource. Used for agent discovery. In a world of agents, context is king."
+        },
+        "mimeType": {
+          "type": "string",
+          "description": "MIME type of the resource content per RFC 6838 (e.g. application/json, text/markdown, text/plain).",
+          "pattern": "^[a-zA-Z0-9!#$&^_.+-]+\\/[a-zA-Z0-9!#$&^_.+-]+(?:\\s*;\\s*[a-zA-Z0-9!#$&^_.+-]+=(?:[a-zA-Z0-9!#$&^_.+-]+|\"[^\"]*\"))*$"
+        },
+        "call": {
+          "type": "string",
+          "description": "For dynamic resources: reference to the consumed operation. Format: {namespace}.{operationId}.",
+          "pattern": "^[a-zA-Z0-9-]+\\.[a-zA-Z0-9-]+$"
+        },
+        "with": {
+          "$ref": "#/$defs/WithInjector"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OperationStep"
+          },
+          "minItems": 1
+        },
+        "mappings": {
+          "type": "array",
+          "description": "Maps step outputs to the resource content.",
+          "items": {
+            "$ref": "#/$defs/StepOutputMapping"
+          }
+        },
+        "outputParameters": {
+          "type": "array"
+        },
+        "location": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^file:///",
+          "description": "For static resources: file:/// URI pointing to a directory whose files are served as MCP resources."
+        }
+      },
+      "required": [
+        "name",
+        "label",
+        "uri",
+        "description"
+      ],
+      "oneOf": [
+        {
+          "required": [
+            "call"
+          ],
+          "type": "object",
+          "properties": {
+            "outputParameters": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/MappedOutputParameter"
+              }
+            }
+          },
+          "not": {
+            "required": [
+              "location"
+            ]
+          }
+        },
+        {
+          "required": [
+            "steps"
+          ],
+          "type": "object",
+          "properties": {
+            "mappings": true,
+            "outputParameters": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/OrchestratedOutputParameter"
+              }
+            }
+          },
+          "not": {
+            "required": [
+              "location"
+            ]
+          }
+        },
+        {
+          "required": [
+            "location"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "call"
+                ]
+              },
+              {
+                "required": [
+                  "steps"
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "McpPrompt": {
+      "type": "object",
+      "description": "An MCP prompt template definition. Prompts are reusable templates with typed arguments that agents can discover and render.",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/IdentifierExtended",
+          "description": "Technical name for the prompt. Used as identifier in MCP prompt listings."
+        },
+        "label": {
+          "type": "string",
+          "description": "Human-readable display name of the prompt. Mapped to MCP 'title' in protocol responses."
+        },
+        "description": {
+          "type": "string",
+          "description": "A meaningful description of the prompt and when to use it. Used for agent discovery."
+        },
+        "arguments": {
+          "type": "array",
+          "description": "Typed arguments for this prompt template. Arguments are substituted into the template via {{arg}} placeholders.",
+          "items": {
+            "$ref": "#/$defs/McpPromptArgument"
+          },
+          "minItems": 1
+        },
+        "template": {
+          "type": "array",
+          "description": "Inline prompt template as an array of messages. Each message has a role and content with {{arg}} placeholders.",
+          "items": {
+            "$ref": "#/$defs/McpPromptMessage"
+          },
+          "minItems": 1
+        },
+        "location": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^file:///",
+          "description": "File-based prompt: file:/// URI pointing to a file containing the prompt template with {{arg}} placeholders. Content becomes a single 'user' message."
+        }
+      },
+      "required": [
+        "name",
+        "label",
+        "description"
+      ],
+      "oneOf": [
+        {
+          "required": [
+            "template"
+          ],
+          "not": {
+            "required": [
+              "location"
+            ]
+          }
+        },
+        {
+          "required": [
+            "location"
+          ],
+          "not": {
+            "required": [
+              "template"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "McpPromptArgument": {
+      "type": "object",
+      "description": "An argument for an MCP prompt template. Arguments are always strings per MCP spec.",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/IdentifierExtended",
+          "description": "Argument name. Becomes a {{name}} placeholder in the template."
+        },
+        "label": {
+          "type": "string",
+          "description": "The display name of the argument. Used for agent discovery."
+        },
+        "description": {
+          "type": "string",
+          "description": "A meaningful description of the argument. Used for agent discovery."
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Whether the argument is required. Defaults to true.",
+          "default": true
+        }
+      },
+      "required": [
+        "name",
+        "description"
+      ],
+      "additionalProperties": false
+    },
+    "McpPromptMessage": {
+      "type": "object",
+      "description": "A message in an inline MCP prompt template. Supports {{arg}} placeholders for argument substitution.",
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": [
+            "user",
+            "assistant"
+          ],
+          "description": "The role of the message sender."
+        },
+        "content": {
+          "type": "string",
+          "description": "The message content. Supports {{arg}} placeholders for argument substitution."
+        }
+      },
+      "required": [
+        "role",
+        "content"
       ],
       "additionalProperties": false
     },
@@ -707,7 +1263,6 @@
         }
       },
       "required": [
-        "description",
         "path"
       ],
       "anyOf": [
@@ -786,11 +1341,8 @@
       "required": [
         "method"
       ],
-      "oneOf": [
+      "anyOf": [
         {
-          "required": [
-            "call"
-          ],
           "properties": {
             "outputParameters": {
               "items": {
@@ -871,10 +1423,8 @@
       },
       "required": [
         "namespace",
-        "description",
         "type",
-        "baseUri",
-        "resources"
+        "baseUri"
       ],
       "additionalProperties": false
     },
@@ -1255,8 +1805,7 @@
         }
       },
       "required": [
-        "targetNamespace",
-        "trustedHeaders"
+        "targetNamespace"
       ],
       "additionalProperties": false
     },
@@ -1366,6 +1915,173 @@
       },
       "required": [
         "type"
+      ],
+      "additionalProperties": false
+    },
+    "ExposesSkill": {
+      "type": "object",
+      "description": "Skill server adapter — metadata and catalog layer. Skills declare tools derived from sibling api or mcp adapters or defined as local file instructions. Does not execute tools.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "skill"
+        },
+        "address": {
+          "$ref": "#/$defs/Address"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "namespace": {
+          "$ref": "#/$defs/IdentifierKebab",
+          "description": "Unique identifier for this skill server"
+        },
+        "description": {
+          "type": "string",
+          "description": "Description of this skill server's purpose"
+        },
+        "authentication": {
+          "$ref": "#/$defs/Authentication"
+        },
+        "skills": {
+          "type": "array",
+          "description": "Array of skill definitions. Each skill declares tools from sibling adapters or local file instructions, or stands alone as purely descriptive.",
+          "items": {
+            "$ref": "#/$defs/ExposedSkill"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "type",
+        "port",
+        "namespace",
+        "skills"
+      ],
+      "additionalProperties": false
+    },
+    "ExposedSkill": {
+      "type": "object",
+      "description": "A skill definition with full Agent Skills Spec frontmatter. Declares tools derived from sibling api or mcp adapters or defined as local file instructions, or stands alone as purely descriptive (no tools).",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/IdentifierKebab",
+          "description": "Skill identifier (kebab-case, 1-64 chars)"
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1024,
+          "description": "What the skill does and when to use it. Used for agent discovery."
+        },
+        "license": {
+          "type": "string",
+          "description": "License identifier (e.g., MIT, Apache-2.0)"
+        },
+        "compatibility": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Compatibility notes and requirements"
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Arbitrary key-value metadata (author, category, tags, ecosystem, etc.)"
+        },
+        "allowed-tools": {
+          "type": "string",
+          "maxLength": 1024,
+          "description": "Space-delimited list of pre-approved tool names (Agent Skills Spec)"
+        },
+        "argument-hint": {
+          "type": "string",
+          "description": "Hint text shown when agents invoke this skill via slash command (Agent Skills Spec)"
+        },
+        "user-invocable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether agents can invoke this skill as a slash command (Agent Skills Spec)"
+        },
+        "disable-model-invocation": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether to prevent auto-loading this skill based on context (Agent Skills Spec)"
+        },
+        "location": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^file:///",
+          "description": "file:/// URI to a directory containing SKILL.md and supporting files. Required when any tool uses 'instruction'."
+        },
+        "tools": {
+          "type": "array",
+          "description": "Tools declared by this skill. Each tool is derived from a sibling adapter or is a local file instruction.",
+          "items": {
+            "$ref": "#/$defs/SkillTool"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "name",
+        "description"
+      ],
+      "additionalProperties": false
+    },
+    "SkillTool": {
+      "type": "object",
+      "description": "A tool declared within a skill. Exactly one of 'from' (derived from a sibling api or mcp adapter) or 'instruction' (local file path relative to the skill's location) must be specified.",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/IdentifierKebab",
+          "description": "Tool identifier (kebab-case)"
+        },
+        "description": {
+          "type": "string",
+          "description": "What the tool does. Used for agent discovery."
+        },
+        "from": {
+          "type": "object",
+          "description": "Derive this tool from a sibling api or mcp adapter.",
+          "properties": {
+            "sourceNamespace": {
+              "type": "string",
+              "description": "Namespace of a sibling exposes[] entry of type api or mcp"
+            },
+            "action": {
+              "type": "string",
+              "description": "Operation name (api) or tool name (mcp) in the source adapter"
+            }
+          },
+          "required": [
+            "sourceNamespace",
+            "action"
+          ],
+          "additionalProperties": false
+        },
+        "instruction": {
+          "type": "string",
+          "description": "File path relative to the skill's location directory containing the tool instruction content"
+        }
+      },
+      "required": [
+        "name",
+        "description"
+      ],
+      "oneOf": [
+        {
+          "required": [
+            "from"
+          ]
+        },
+        {
+          "required": [
+            "instruction"
+          ]
+        }
       ],
       "additionalProperties": false
     }
