@@ -1,0 +1,2379 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://naftiko.io/schemas/v1.0.0-alpha2/naftiko.json",
+  "name": "Naftiko Specification",
+  "description": "This Schema should be used to describe and validate Naftiko Capabilities",
+  "type": "object",
+  "properties": {
+    "naftiko": {
+      "type": "string",
+      "description": "Version of the Naftiko specification",
+      "const": "1.0.0-alpha2"
+    },
+    "info": {
+      "$ref": "#/$defs/Info"
+    },
+    "consumes": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/ConsumesHttp"
+          },
+          {
+            "$ref": "#/$defs/ImportedConsumesHttp"
+          }
+        ]
+      },
+      "minItems": 1
+    },
+    "binds": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Binding"
+      },
+      "minItems": 1,
+      "description": "List of external sources the capability binds to for variable injection."
+    },
+    "capability": {
+      "$ref": "#/$defs/Capability"
+    }
+  },
+  "oneOf": [
+    {
+      "required": [
+        "naftiko",
+        "capability"
+      ]
+    },
+    {
+      "required": [
+        "naftiko",
+        "consumes"
+      ]
+    }
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "ImportedConsumesHttp": {
+      "type": "object",
+      "description": "A globally imported consumed HTTP adapter. Discriminant: 'location' field present.",
+      "properties": {
+        "location": {
+          "type": "string",
+          "description": "URI to the source consumes file"
+        },
+        "import": {
+          "$ref": "#/$defs/IdentifierKebab",
+          "description": "Namespace in the source consumes file"
+        },
+        "as": {
+          "$ref": "#/$defs/IdentifierKebab",
+          "description": "Optional local alias for the imported namespace"
+        }
+      },
+      "required": [
+        "location",
+        "import"
+      ],
+      "additionalProperties": false
+    },
+    "Binding": {
+      "type": "object",
+      "description": "Declares that the capability binds to an external source of variables. Variables declared via 'keys' are injected using mustache-style expressions.",
+      "properties": {
+        "namespace": {
+          "$ref": "#/$defs/IdentifierKebab",
+          "description": "Unique identifier for this binding. Used as qualifier in expressions for disambiguation."
+        },
+        "description": {
+          "type": "string",
+          "description": "A meaningful description of the binding's purpose. In a world of agents, context is king."
+        },
+        "location": {
+          "$ref": "#/$defs/UriLocation",
+          "description": "URI identifying the value provider. The URI scheme expresses the resolution strategy (file://, vault://, github-secrets://, k8s-secret://, etc.). When omitted, values are injected by the runtime environment."
+        },
+        "keys": {
+          "$ref": "#/$defs/BindingKeys",
+          "description": "Map of variable names to keys in the resolved source. Each key is the variable name used for injection, each value is the corresponding key in the provider."
+        }
+      },
+      "required": [
+        "namespace",
+        "keys"
+      ],
+      "additionalProperties": false
+    },
+    "UriLocation": {
+      "type": "string",
+      "pattern": "^[a-zA-Z][a-zA-Z0-9+.-]*://",
+      "description": "A URI with an explicit scheme identifying the resource provider."
+    },
+    "BindingVariableName": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*$",
+      "description": "Variable name for binding injection (SCREAMING_SNAKE_CASE). Enforced for visual distinction from declared parameters in expressions."
+    },
+    "BindingKeys": {
+      "type": "object",
+      "description": "Map of variable names (SCREAMING_SNAKE_CASE) to source keys in the provider.",
+      "propertyNames": {
+        "$ref": "#/$defs/BindingVariableName"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/IdentifierExtended"
+      }
+    },
+    "IdentifierKebab": {
+      "type": "string",
+      "description": "Kebab-case identifier (alphanumeric and hyphens).",
+      "pattern": "^[a-zA-Z0-9-]+$"
+    },
+    "IdentifierExtended": {
+      "type": "string",
+      "description": "Extended identifier (alphanumeric, hyphens, underscores, and wildcard).",
+      "pattern": "^[a-zA-Z0-9-_*]+$"
+    },
+    "ConsumedInputParameter": {
+      "type": "object",
+      "description": "Describes a single function parameter. A unique parameter is defined by a combination of a name and location.",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/IdentifierExtended",
+          "description": "Name of the parameter"
+        },
+        "in": {
+          "type": "string",
+          "description": "Location of the parameter",
+          "enum": [
+            "query",
+            "header",
+            "path",
+            "cookie",
+            "body",
+            "environment"
+          ]
+        },
+        "value": {
+          "type": "string",
+          "description": "Value of the parameter. Can be a static value or an expression resolved from the execution context (e.g. $this.namespace.param)"
+        }
+      },
+      "required": [
+        "name",
+        "in"
+      ],
+      "additionalProperties": false
+    },
+    "ExposedInputParameter": {
+      "type": "object",
+      "description": "Declares an input parameter for an exposed resource or operation. Type and description are mandatory since the framework cannot infer them.",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/IdentifierExtended",
+          "description": "Name of the parameter."
+        },
+        "in": {
+          "type": "string",
+          "description": "Location of the parameter.",
+          "enum": [
+            "query",
+            "header",
+            "path",
+            "cookie",
+            "body"
+          ]
+        },
+        "type": {
+          "type": "string",
+          "description": "The expected data type of the parameter.",
+          "enum": [
+            "string",
+            "number",
+            "integer",
+            "boolean",
+            "array",
+            "object"
+          ]
+        },
+        "description": {
+          "type": "string",
+          "description": "A meaningful description of the parameter. Used for agent discovery and human documentation."
+        },
+        "pattern": {
+          "type": "string",
+          "description": "Optional regex pattern for validation. Only applicable when type is 'string'."
+        },
+        "value": {
+          "type": "string",
+          "description": "Static value or expression resolved from the execution context."
+        }
+      },
+      "required": [
+        "name",
+        "in",
+        "type",
+        "description"
+      ],
+      "additionalProperties": false
+    },
+    "ConsumedOutputParameter": {
+      "type": "object",
+      "description": "Output parameter of a consumed operation. Extracts a named value from the raw API response via JsonPath, for use in orchestration steps.",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/IdentifierExtended",
+          "description": "Name of the output parameter. It will be used as a reference in the mapping definitions of the steps to indicate where to map values to."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array"
+          ]
+        },
+        "value": {
+          "type": "string",
+          "description": "JsonPath expression against the raw response payload. E.g. $.results[*].id"
+        }
+      },
+      "required": [
+        "name",
+        "type",
+        "value"
+      ],
+      "unevaluatedProperties": false
+    },
+    "MappedOutputParameterBase": {
+      "type": "object",
+      "description": "Base for an inline-mapped output parameter with recursive typing and JsonPath extraction.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array"
+          ]
+        },
+        "mapping": {
+          "type": "string",
+          "description": "JsonPath expression to extract the value. E.g. $.properties.Name.title[0].text.content"
+        },
+        "const": {
+          "description": "Schema-level constant for validation and linting. Not used at runtime for value injection — use 'value' instead.",
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "array"
+            },
+            {
+              "type": "object"
+            }
+          ]
+        },
+        "value": {
+          "type": "string",
+          "description": "Static value injected at runtime. When provided, takes precedence over mapping."
+        }
+      },
+      "required": [
+        "type"
+      ]
+    },
+    "MappedOutputParameterString": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/MappedOutputParameterBase"
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "string"
+            },
+            "mapping": true,
+            "const": true,
+            "value": true
+          },
+          "oneOf": [
+            {
+              "required": [
+                "mapping"
+              ]
+            },
+            {
+              "required": [
+                "value"
+              ]
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      ]
+    },
+    "MappedOutputParameterNumber": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/MappedOutputParameterBase"
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "number"
+            },
+            "mapping": true,
+            "const": true,
+            "value": true
+          },
+          "oneOf": [
+            {
+              "required": [
+                "mapping"
+              ]
+            },
+            {
+              "required": [
+                "value"
+              ]
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      ]
+    },
+    "MappedOutputParameterBoolean": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/MappedOutputParameterBase"
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "boolean"
+            },
+            "mapping": true,
+            "const": true,
+            "value": true
+          },
+          "oneOf": [
+            {
+              "required": [
+                "mapping"
+              ]
+            },
+            {
+              "required": [
+                "value"
+              ]
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      ]
+    },
+    "MappedOutputParameterObject": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/MappedOutputParameterBase"
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "object"
+            },
+            "mapping": true,
+            "const": true,
+            "value": true,
+            "properties": {
+              "type": "object",
+              "description": "A map of named properties. Each key is a property name, each value is a typed output parameter.",
+              "additionalProperties": {
+                "$ref": "#/$defs/MappedOutputParameter"
+              }
+            }
+          },
+          "required": [
+            "properties"
+          ],
+          "unevaluatedProperties": false
+        }
+      ]
+    },
+    "MappedOutputParameterArray": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/MappedOutputParameterBase"
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "array"
+            },
+            "mapping": true,
+            "const": true,
+            "value": true,
+            "items": {
+              "$ref": "#/$defs/MappedOutputParameter"
+            }
+          },
+          "required": [
+            "items"
+          ],
+          "unevaluatedProperties": false
+        }
+      ]
+    },
+    "MappedOutputParameter": {
+      "description": "Inline-mapped output parameter (simple mode). Used when the exposed operation has a single call + with.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/MappedOutputParameterString"
+        },
+        {
+          "$ref": "#/$defs/MappedOutputParameterNumber"
+        },
+        {
+          "$ref": "#/$defs/MappedOutputParameterBoolean"
+        },
+        {
+          "$ref": "#/$defs/MappedOutputParameterObject"
+        },
+        {
+          "$ref": "#/$defs/MappedOutputParameterArray"
+        }
+      ]
+    },
+    "OrchestratedOutputParameterBase": {
+      "type": "object",
+      "description": "Base for a named output parameter whose value is populated by step mappings during orchestration.",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/IdentifierExtended",
+          "description": "Name of the output parameter. It will be used as a reference in the mapping definitions of the steps to indicate where to map values to."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "type"
+      ]
+    },
+    "OrchestratedOutputParameterScalar": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/OrchestratedOutputParameterBase"
+        },
+        {
+          "properties": {
+            "type": {
+              "enum": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            },
+            "name": true
+          },
+          "unevaluatedProperties": false
+        }
+      ]
+    },
+    "OrchestratedOutputParameterArray": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/OrchestratedOutputParameterBase"
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "array"
+            },
+            "name": true,
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/OrchestratedOutputParameter"
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "items"
+          ],
+          "unevaluatedProperties": false
+        }
+      ]
+    },
+    "OrchestratedOutputParameterObject": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/OrchestratedOutputParameterBase"
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "object"
+            },
+            "name": true,
+            "properties": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/OrchestratedOutputParameter"
+              }
+            }
+          },
+          "required": [
+            "properties"
+          ],
+          "unevaluatedProperties": false
+        }
+      ]
+    },
+    "OrchestratedOutputParameter": {
+      "description": "Named output parameter (orchestrated mode). Used when the exposed operation has steps with mappings/lookups.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/OrchestratedOutputParameterScalar"
+        },
+        {
+          "$ref": "#/$defs/OrchestratedOutputParameterArray"
+        },
+        {
+          "$ref": "#/$defs/OrchestratedOutputParameterObject"
+        }
+      ]
+    },
+    "MockOutputParameter": {
+      "type": "object",
+      "description": "Named output parameter with a static or template value for mock mode (no call or steps). The value field supports Mustache templates resolved against input parameters at runtime.",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/IdentifierExtended",
+          "description": "Name of the output field in the returned payload."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "string",
+            "number",
+            "boolean"
+          ]
+        },
+        "value": {
+          "type": "string",
+          "description": "Static value or Mustache template resolved against input parameters at runtime."
+        }
+      },
+      "required": [
+        "name",
+        "type",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "Hostname": {
+      "type": "string",
+      "description": "Valid hostname",
+      "pattern": "^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)(\\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$"
+    },
+    "IPv4": {
+      "type": "string",
+      "description": "Valid IPv4 address",
+      "pattern": "^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
+    },
+    "IPv6": {
+      "type": "string",
+      "description": "Valid IPv6 address (simplified)",
+      "pattern": "^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$"
+    },
+    "Address": {
+      "description": "hostname or IP for the exposition",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Hostname"
+        },
+        {
+          "$ref": "#/$defs/IPv4"
+        },
+        {
+          "$ref": "#/$defs/IPv6"
+        }
+      ]
+    },
+    "Info": {
+      "type": "object",
+      "description": "Information about the capability",
+      "properties": {
+        "label": {
+          "type": "string",
+          "description": "The display name of the capability"
+        },
+        "description": {
+          "type": "string",
+          "description": "A description of the capability (the more meaningful, the easier for agents discovery)"
+        },
+        "tags": {
+          "type": "array",
+          "description": "List of tags to help categorize the capability. It can be used for discovery and filtering purposes.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "created": {
+          "type": "string",
+          "pattern": "^\\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])$",
+          "description": "The date when the capability was created"
+        },
+        "modified": {
+          "type": "string",
+          "pattern": "^\\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])$",
+          "description": "The date when the capability was last modified"
+        },
+        "stakeholders": {
+          "type": "array",
+          "description": "List of stakeholders related to this capability. It can be used for discovery and filtering purposes.",
+          "items": {
+            "$ref": "#/$defs/Person"
+          }
+        }
+      },
+      "required": [
+        "label",
+        "description"
+      ],
+      "additionalProperties": false
+    },
+    "Person": {
+      "type": "object",
+      "description": "A person related to the capability",
+      "properties": {
+        "role": {
+          "type": "string",
+          "description": "The role of the person in relation to the capability. E.g. owner, editor, viewer"
+        },
+        "fullName": {
+          "type": "string",
+          "description": "The full name of the person"
+        },
+        "email": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}$",
+          "description": "The email address of the person"
+        }
+      },
+      "required": [
+        "role",
+        "fullName"
+      ],
+      "additionalProperties": false
+    },
+    "Capability": {
+      "type": "object",
+      "description": "Capability technical configuration",
+      "properties": {
+        "binds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Binding"
+          },
+          "minItems": 1,
+          "description": "External sources the capability binds to for variable injection."
+        },
+        "exposes": {
+          "type": "array",
+          "description": "List of exposed server adapters",
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/ExposesRest"
+              },
+              {
+                "$ref": "#/$defs/ExposesMcp"
+              },
+              {
+                "$ref": "#/$defs/ExposesSkill"
+              }
+            ]
+          },
+          "minItems": 1
+        },
+        "consumes": {
+          "type": "array",
+          "description": "Consumed client adapters",
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/ConsumesHttp"
+              },
+              {
+                "$ref": "#/$defs/ImportedConsumesHttp"
+              }
+            ]
+          },
+          "minItems": 1
+        },
+        "aggregates": {
+          "type": "array",
+          "description": "Domain aggregates defining reusable functions that adapters can reference via ref.",
+          "items": {
+            "$ref": "#/$defs/Aggregate"
+          },
+          "minItems": 1
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "exposes"
+          ]
+        },
+        {
+          "required": [
+            "consumes"
+          ]
+        },
+        {
+          "required": [
+            "exposes",
+            "consumes"
+          ]
+        }
+      ],
+      "additionalProperties": false
+    },
+    "Aggregate": {
+      "type": "object",
+      "description": "A domain aggregate grouping reusable functions. Adapters reference these functions via ref.",
+      "properties": {
+        "label": {
+          "type": "string",
+          "description": "Human-readable name for this aggregate (e.g. 'Forecast')."
+        },
+        "namespace": {
+          "$ref": "#/$defs/IdentifierKebab",
+          "description": "Machine-readable qualifier for this aggregate. Used as the first segment in ref values."
+        },
+        "functions": {
+          "type": "array",
+          "description": "Reusable invocable units within this aggregate.",
+          "items": {
+            "$ref": "#/$defs/AggregateFunction"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "label",
+        "namespace",
+        "functions"
+      ],
+      "additionalProperties": false
+    },
+    "AggregateFunction": {
+      "type": "object",
+      "description": "A reusable invocable unit within an aggregate. Adapter units reference it via ref: aggregate-namespace.function-name.",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/IdentifierKebab",
+          "description": "Function name. Combined with aggregate namespace to form the ref target."
+        },
+        "description": {
+          "type": "string",
+          "description": "A meaningful description of the function."
+        },
+        "semantics": {
+          "$ref": "#/$defs/Semantics"
+        },
+        "inputParameters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/McpToolInputParameter"
+          }
+        },
+        "call": {
+          "type": "string",
+          "description": "Reference to the consumed operation. Format: {namespace}.{operationId}.",
+          "pattern": "^[a-zA-Z0-9-]+\\.[a-zA-Z0-9-]+$"
+        },
+        "with": {
+          "$ref": "#/$defs/WithInjector"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OperationStep"
+          },
+          "minItems": 1
+        },
+        "mappings": {
+          "type": "array",
+          "description": "Maps step outputs to the function's output parameters.",
+          "items": {
+            "$ref": "#/$defs/StepOutputMapping"
+          }
+        },
+        "outputParameters": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "description"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "call"
+          ],
+          "type": "object",
+          "properties": {
+            "outputParameters": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/MappedOutputParameter"
+              }
+            }
+          }
+        },
+        {
+          "required": [
+            "steps"
+          ],
+          "type": "object",
+          "properties": {
+            "mappings": true,
+            "outputParameters": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/OrchestratedOutputParameter"
+              }
+            }
+          }
+        },
+        {
+          "required": [
+            "outputParameters"
+          ],
+          "type": "object",
+          "properties": {
+            "outputParameters": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/MockOutputParameter"
+              },
+              "minItems": 1
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "Semantics": {
+      "type": "object",
+      "description": "Transport-neutral behavioral metadata for an invocable unit. Used for design-time tooling and adapter derivations (e.g. MCP hints).",
+      "properties": {
+        "safe": {
+          "type": "boolean",
+          "description": "If true, the function does not modify state. Default: false."
+        },
+        "idempotent": {
+          "type": "boolean",
+          "description": "If true, repeating the call has no additional effect. Default: false."
+        },
+        "cacheable": {
+          "type": "boolean",
+          "description": "If true, the result can be cached. Default: false."
+        }
+      },
+      "additionalProperties": false
+    },
+    "ExposesRest": {
+      "type": "object",
+      "description": "REST exposition configuration",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "rest"
+        },
+        "address": {
+          "$ref": "#/$defs/Address"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "namespace": {
+          "$ref": "#/$defs/IdentifierKebab",
+          "description": "Unique identifier for this exposed API"
+        },
+        "authentication": {
+          "$ref": "#/$defs/Authentication"
+        },
+        "resources": {
+          "type": "array",
+          "description": "List of exposed resources",
+          "items": {
+            "$ref": "#/$defs/ExposedResource"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "type",
+        "port",
+        "namespace"
+      ],
+      "additionalProperties": false
+    },
+    "ExposesMcp": {
+      "type": "object",
+      "description": "MCP Server exposition configuration. Exposes tools, resources and prompts over MCP transport (Streamable HTTP or stdio).",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "mcp"
+        },
+        "transport": {
+          "type": "string",
+          "enum": [
+            "http",
+            "stdio"
+          ],
+          "default": "http",
+          "description": "The MCP transport to use. 'http' (default) exposes a Streamable HTTP server; 'stdio' uses stdin/stdout JSON-RPC for local IDE integration."
+        },
+        "address": {
+          "$ref": "#/$defs/Address"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "namespace": {
+          "$ref": "#/$defs/IdentifierKebab",
+          "description": "Unique identifier for this exposed MCP server"
+        },
+        "description": {
+          "type": "string",
+          "description": "A meaningful description of this MCP server's purpose. Used as the server instructions sent during MCP initialization."
+        },
+        "authentication": {
+          "$ref": "#/$defs/Authentication"
+        },
+        "tools": {
+          "type": "array",
+          "description": "List of MCP tools exposed by this server",
+          "items": {
+            "$ref": "#/$defs/McpTool"
+          },
+          "minItems": 1
+        },
+        "resources": {
+          "type": "array",
+          "description": "List of MCP resources exposed by this server. Resources provide data that agents can read.",
+          "items": {
+            "$ref": "#/$defs/McpResource"
+          },
+          "minItems": 1
+        },
+        "prompts": {
+          "type": "array",
+          "description": "List of MCP prompt templates exposed by this server. Prompts are reusable templates with typed arguments.",
+          "items": {
+            "$ref": "#/$defs/McpPrompt"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "type",
+        "namespace",
+        "tools"
+      ],
+      "oneOf": [
+        {
+          "properties": {
+            "transport": {
+              "const": "stdio"
+            }
+          },
+          "required": [
+            "transport"
+          ],
+          "not": {
+            "required": [
+              "port"
+            ]
+          }
+        },
+        {
+          "properties": {
+            "transport": {
+              "const": "http"
+            }
+          },
+          "required": [
+            "port"
+          ]
+        }
+      ],
+      "additionalProperties": false
+    },
+    "McpTool": {
+      "type": "object",
+      "description": "An MCP tool definition. Each tool maps to one or more consumed HTTP operations.",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/IdentifierKebab",
+          "description": "Technical name for the tool. Used as the MCP tool name."
+        },
+        "label": {
+          "type": "string",
+          "description": "Human-readable display name of the tool. Mapped to MCP 'title' in tools/list responses."
+        },
+        "description": {
+          "type": "string",
+          "description": "A meaningful description of the tool. Used for agent discovery. Remember, in a world of agents, context is king."
+        },
+        "inputParameters": {
+          "type": "array",
+          "description": "Tool input parameters. These become the MCP tool's input schema (JSON Schema).",
+          "items": {
+            "$ref": "#/$defs/McpToolInputParameter"
+          }
+        },
+        "ref": {
+          "type": "string",
+          "description": "Reference to an aggregate function. Format: {aggregate-namespace}.{function-name}. Inherited fields are merged; explicit fields override.",
+          "pattern": "^[a-zA-Z0-9-]+\\.[a-zA-Z0-9-]+$"
+        },
+        "call": {
+          "type": "string",
+          "description": "For simple cases, the reference to the consumed operation. Format: {namespace}.{operationId}.",
+          "pattern": "^[a-zA-Z0-9-]+\\.[a-zA-Z0-9-]+$"
+        },
+        "with": {
+          "$ref": "#/$defs/WithInjector"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OperationStep"
+          },
+          "minItems": 1
+        },
+        "mappings": {
+          "type": "array",
+          "description": "Maps step outputs to the tool's output parameters.",
+          "items": {
+            "$ref": "#/$defs/StepOutputMapping"
+          }
+        },
+        "hints": {
+          "$ref": "#/$defs/McpToolHints"
+        },
+        "outputParameters": {
+          "type": "array"
+        }
+      },
+      "required": [],
+      "anyOf": [
+        {
+          "required": [
+            "name",
+            "description",
+            "call"
+          ],
+          "type": "object",
+          "properties": {
+            "outputParameters": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/MappedOutputParameter"
+              }
+            }
+          }
+        },
+        {
+          "required": [
+            "name",
+            "description",
+            "steps"
+          ],
+          "type": "object",
+          "properties": {
+            "mappings": true,
+            "outputParameters": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/OrchestratedOutputParameter"
+              }
+            }
+          }
+        },
+        {
+          "required": [
+            "ref"
+          ]
+        }
+      ],
+      "additionalProperties": false
+    },
+    "McpToolHints": {
+      "type": "object",
+      "description": "Optional hints describing tool behavior to MCP clients. All properties are advisory. Mapped to ToolAnnotations in the MCP protocol.",
+      "properties": {
+        "readOnly": {
+          "type": "boolean",
+          "description": "If true, the tool does not modify its environment. Default: false."
+        },
+        "destructive": {
+          "type": "boolean",
+          "description": "If true, the tool may perform destructive updates. Meaningful only when readOnly is false. Default: true."
+        },
+        "idempotent": {
+          "type": "boolean",
+          "description": "If true, calling the tool repeatedly with the same arguments has no additional effect. Meaningful only when readOnly is false. Default: false."
+        },
+        "openWorld": {
+          "type": "boolean",
+          "description": "If true, the tool may interact with external entities. Default: true."
+        }
+      },
+      "additionalProperties": false
+    },
+    "McpToolInputParameter": {
+      "type": "object",
+      "description": "Declares an input parameter for an MCP tool. These become properties in the tool's JSON Schema input definition.",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/IdentifierExtended",
+          "description": "Name of the parameter. Becomes a property name in the tool's input schema."
+        },
+        "type": {
+          "type": "string",
+          "description": "The expected data type of the parameter.",
+          "enum": [
+            "string",
+            "number",
+            "integer",
+            "boolean",
+            "array",
+            "object"
+          ]
+        },
+        "description": {
+          "type": "string",
+          "description": "A meaningful description of the parameter. Used for agent discovery and tool documentation."
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Whether the parameter is required. Defaults to true.",
+          "default": true
+        }
+      },
+      "required": [
+        "name",
+        "type",
+        "description"
+      ],
+      "additionalProperties": false
+    },
+    "McpResource": {
+      "type": "object",
+      "description": "An MCP resource definition. Exposes data that agents can read. Either dynamic (backed by consumed HTTP operations via call/steps) or static (served from local files via location).",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/IdentifierExtended",
+          "description": "Technical name for the resource. Used as identifier in MCP resource listings."
+        },
+        "label": {
+          "type": "string",
+          "description": "Human-readable display name of the resource. Mapped to MCP 'title' in protocol responses."
+        },
+        "uri": {
+          "type": "string",
+          "description": "The URI that identifies this resource in MCP. Can use any scheme (e.g. config://, docs://, data://). For resource templates, use {param} placeholders."
+        },
+        "description": {
+          "type": "string",
+          "description": "A meaningful description of the resource. Used for agent discovery. In a world of agents, context is king."
+        },
+        "mimeType": {
+          "type": "string",
+          "description": "MIME type of the resource content per RFC 6838 (e.g. application/json, text/markdown, text/plain).",
+          "pattern": "^[a-zA-Z0-9!#$&^_.+-]+\\/[a-zA-Z0-9!#$&^_.+-]+(?:\\s*;\\s*[a-zA-Z0-9!#$&^_.+-]+=(?:[a-zA-Z0-9!#$&^_.+-]+|\"[^\"]*\"))*$"
+        },
+        "call": {
+          "type": "string",
+          "description": "For dynamic resources: reference to the consumed operation. Format: {namespace}.{operationId}.",
+          "pattern": "^[a-zA-Z0-9-]+\\.[a-zA-Z0-9-]+$"
+        },
+        "with": {
+          "$ref": "#/$defs/WithInjector"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OperationStep"
+          },
+          "minItems": 1
+        },
+        "mappings": {
+          "type": "array",
+          "description": "Maps step outputs to the resource content.",
+          "items": {
+            "$ref": "#/$defs/StepOutputMapping"
+          }
+        },
+        "outputParameters": {
+          "type": "array"
+        },
+        "location": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^file:///",
+          "description": "For static resources: file:/// URI pointing to a directory whose files are served as MCP resources."
+        }
+      },
+      "required": [
+        "name",
+        "label",
+        "uri",
+        "description"
+      ],
+      "oneOf": [
+        {
+          "required": [
+            "call"
+          ],
+          "type": "object",
+          "properties": {
+            "outputParameters": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/MappedOutputParameter"
+              }
+            }
+          },
+          "not": {
+            "required": [
+              "location"
+            ]
+          }
+        },
+        {
+          "required": [
+            "steps"
+          ],
+          "type": "object",
+          "properties": {
+            "mappings": true,
+            "outputParameters": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/OrchestratedOutputParameter"
+              }
+            }
+          },
+          "not": {
+            "required": [
+              "location"
+            ]
+          }
+        },
+        {
+          "required": [
+            "location"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "call"
+                ]
+              },
+              {
+                "required": [
+                  "steps"
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "McpPrompt": {
+      "type": "object",
+      "description": "An MCP prompt template definition. Prompts are reusable templates with typed arguments that agents can discover and render.",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/IdentifierExtended",
+          "description": "Technical name for the prompt. Used as identifier in MCP prompt listings."
+        },
+        "label": {
+          "type": "string",
+          "description": "Human-readable display name of the prompt. Mapped to MCP 'title' in protocol responses."
+        },
+        "description": {
+          "type": "string",
+          "description": "A meaningful description of the prompt and when to use it. Used for agent discovery."
+        },
+        "arguments": {
+          "type": "array",
+          "description": "Typed arguments for this prompt template. Arguments are substituted into the template via {{arg}} placeholders.",
+          "items": {
+            "$ref": "#/$defs/McpPromptArgument"
+          },
+          "minItems": 1
+        },
+        "template": {
+          "type": "array",
+          "description": "Inline prompt template as an array of messages. Each message has a role and content with {{arg}} placeholders.",
+          "items": {
+            "$ref": "#/$defs/McpPromptMessage"
+          },
+          "minItems": 1
+        },
+        "location": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^file:///",
+          "description": "File-based prompt: file:/// URI pointing to a file containing the prompt template with {{arg}} placeholders. Content becomes a single 'user' message."
+        }
+      },
+      "required": [
+        "name",
+        "label",
+        "description"
+      ],
+      "oneOf": [
+        {
+          "required": [
+            "template"
+          ],
+          "not": {
+            "required": [
+              "location"
+            ]
+          }
+        },
+        {
+          "required": [
+            "location"
+          ],
+          "not": {
+            "required": [
+              "template"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "McpPromptArgument": {
+      "type": "object",
+      "description": "An argument for an MCP prompt template. Arguments are always strings per MCP spec.",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/IdentifierExtended",
+          "description": "Argument name. Becomes a {{name}} placeholder in the template."
+        },
+        "label": {
+          "type": "string",
+          "description": "The display name of the argument. Used for agent discovery."
+        },
+        "description": {
+          "type": "string",
+          "description": "A meaningful description of the argument. Used for agent discovery."
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Whether the argument is required. Defaults to true.",
+          "default": true
+        }
+      },
+      "required": [
+        "name",
+        "description"
+      ],
+      "additionalProperties": false
+    },
+    "McpPromptMessage": {
+      "type": "object",
+      "description": "A message in an inline MCP prompt template. Supports {{arg}} placeholders for argument substitution.",
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": [
+            "user",
+            "assistant"
+          ],
+          "description": "The role of the message sender."
+        },
+        "content": {
+          "type": "string",
+          "description": "The message content. Supports {{arg}} placeholders for argument substitution."
+        }
+      },
+      "required": [
+        "role",
+        "content"
+      ],
+      "additionalProperties": false
+    },
+    "ExposedResource": {
+      "type": "object",
+      "description": "An exposed resource",
+      "properties": {
+        "label": {
+          "type": "string",
+          "description": "Display name for the resource. It will likely be used in UIs."
+        },
+        "description": {
+          "type": "string",
+          "description": "Used to provide *meaningful* information about the resource. Remember, in a world of agents, context is king."
+        },
+        "path": {
+          "type": "string",
+          "description": "Path of the resource (supports {{param}} placeholders)"
+        },
+        "name": {
+          "$ref": "#/$defs/IdentifierKebab",
+          "description": "Technical name for the resource. It will likely be used for reference"
+        },
+        "inputParameters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ExposedInputParameter"
+          }
+        },
+        "operations": {
+          "type": "array",
+          "description": "Operations available on this resource",
+          "items": {
+            "$ref": "#/$defs/ExposedOperation"
+          }
+        },
+        "forward": {
+          "$ref": "#/$defs/ForwardConfig"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "operations"
+          ]
+        },
+        {
+          "required": [
+            "forward"
+          ]
+        }
+      ],
+      "additionalProperties": false
+    },
+    "ExposedOperation": {
+      "type": "object",
+      "description": "An operation exposed on a resource.",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/IdentifierKebab",
+          "description": "Technical name for the operation. Used for reference."
+        },
+        "label": {
+          "type": "string",
+          "description": "Display name for the operation. Used in UIs."
+        },
+        "description": {
+          "type": "string",
+          "description": "Used to provide *meaningful* information about the operation. Remember, in a world of agents, context is king."
+        },
+        "method": {
+          "type": "string",
+          "enum": [
+            "GET",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE"
+          ],
+          "default": "GET"
+        },
+        "inputParameters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ExposedInputParameter"
+          }
+        },
+        "ref": {
+          "type": "string",
+          "description": "Reference to an aggregate function. Format: {aggregate-namespace}.{function-name}. Inherited fields are merged; explicit fields override.",
+          "pattern": "^[a-zA-Z0-9-]+\\.[a-zA-Z0-9-]+$"
+        },
+        "call": {
+          "type": "string",
+          "description": "For simple cases, the reference to the consumed operation. Format: {namespace}.{operationId}. E.g.: notion.get-database or github.get-user",
+          "pattern": "^[a-zA-Z0-9-]+\\.[a-zA-Z0-9-]+$"
+        },
+        "with": {
+          "$ref": "#/$defs/WithInjector"
+        },
+        "outputParameters": {
+          "type": "array"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OperationStep"
+          },
+          "minItems": 1
+        },
+        "mappings": {
+          "type": "array",
+          "description": "Maps step outputs to the operation's output parameters.",
+          "items": {
+            "$ref": "#/$defs/StepOutputMapping"
+          }
+        }
+      },
+      "required": [
+        "method"
+      ],
+      "anyOf": [
+        {
+          "properties": {
+            "outputParameters": {
+              "items": {
+                "$ref": "#/$defs/MappedOutputParameter"
+              }
+            }
+          }
+        },
+        {
+          "required": [
+            "steps",
+            "name"
+          ],
+          "properties": {
+            "mappings": true,
+            "outputParameters": {
+              "items": {
+                "$ref": "#/$defs/OrchestratedOutputParameter"
+              }
+            }
+          }
+        },
+        {
+          "required": [
+            "ref"
+          ]
+        }
+      ],
+      "additionalProperties": false
+    },
+    "WithInjector": {
+      "type": "object",
+      "description": "A map of key-value pairs that binds input parameters of the called operation to values or expressions resolved from the execution context.",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          }
+        ]
+      }
+    },
+    "ConsumesHttp": {
+      "type": "object",
+      "description": "HTTP API consumption configuration",
+      "properties": {
+        "namespace": {
+          "$ref": "#/$defs/IdentifierKebab",
+          "description": "Unique identifier for this consumed API"
+        },
+        "type": {
+          "type": "string",
+          "const": "http"
+        },
+        "description": {
+          "type": "string",
+          "description": "Used to provide *meaningful* information about the operation. Remember, in a world of agents, context is king."
+        },
+        "baseUri": {
+          "type": "string",
+          "description": "Target URI for the consumes API",
+          "pattern": "^https?://[^/]+(/[^{]*)?$"
+        },
+        "inputParameters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ConsumedInputParameter"
+          }
+        },
+        "authentication": {
+          "$ref": "#/$defs/Authentication"
+        },
+        "resources": {
+          "type": "array",
+          "description": "List of consumed resources",
+          "items": {
+            "$ref": "#/$defs/ConsumedHttpResource"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "namespace",
+        "type",
+        "baseUri"
+      ],
+      "additionalProperties": false
+    },
+    "ConsumedHttpResource": {
+      "type": "object",
+      "description": "A consumed HTTP resource",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/IdentifierKebab",
+          "description": "Technical name for the resource. It will likely be used for reference"
+        },
+        "label": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "inputParameters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ConsumedInputParameter"
+          }
+        },
+        "operations": {
+          "type": "array",
+          "description": "Operations on this resource",
+          "items": {
+            "$ref": "#/$defs/ConsumedHttpOperation"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "name",
+        "path",
+        "operations"
+      ],
+      "additionalProperties": false
+    },
+    "ConsumedHttpOperation": {
+      "type": "object",
+      "description": "An operation on a consumed HTTP resource",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/IdentifierKebab",
+          "description": "Technical name for the operation. Used for reference."
+        },
+        "label": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string",
+          "description": "Used to provide *meaningful* information about the operation. Remember, in a world of agents, context is king."
+        },
+        "method": {
+          "type": "string",
+          "enum": [
+            "GET",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE"
+          ],
+          "default": "GET"
+        },
+        "inputParameters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ConsumedInputParameter"
+          }
+        },
+        "outputRawFormat": {
+          "type": "string",
+          "enum": [
+            "json",
+            "xml",
+            "avro",
+            "protobuf",
+            "csv",
+            "tsv",
+            "psv",
+            "yaml",
+            "html",
+            "markdown"
+          ],
+          "default": "json",
+          "description": "The raw format of the response from the consumed API. It is used to determine how to parse the response and extract the output parameters. Delimited formats: csv (comma), tsv (tab), psv (pipe). Default value is json."
+        },
+        "outputSchema": {
+          "type": "string",
+          "description": "Optional format-specific schema or selector. Required for avro and protobuf as the schema file path. For html, this may contain a CSS selector used to scope table extraction. For markdown, this may contain a heading prefix used to filter sections."
+        },
+        "outputParameters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ConsumedOutputParameter"
+          }
+        },
+        "body": {
+          "$ref": "#/$defs/RequestBody"
+        }
+      },
+      "required": [
+        "name",
+        "method"
+      ],
+      "additionalProperties": false
+    },
+    "OperationStepBase": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "call",
+            "lookup"
+          ]
+        },
+        "name": {
+          "$ref": "#/$defs/IdentifierKebab",
+          "description": "Technical name for the step. Used as namespace for referencing step outputs in mappings and expressions."
+        }
+      },
+      "required": [
+        "type",
+        "name"
+      ]
+    },
+    "OperationStepCall": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/OperationStepBase"
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "call"
+            },
+            "name": true,
+            "call": {
+              "type": "string",
+              "description": "Reference to the consumed operation. Format: {namespace}.{operationId}.",
+              "pattern": "^[a-zA-Z0-9-]+\\.[a-zA-Z0-9-]+$"
+            },
+            "with": {
+              "$ref": "#/$defs/WithInjector"
+            }
+          },
+          "required": [
+            "call"
+          ],
+          "unevaluatedProperties": false
+        }
+      ]
+    },
+    "OperationStepLookup": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/OperationStepBase"
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "lookup"
+            },
+            "name": true,
+            "index": {
+              "$ref": "#/$defs/IdentifierKebab",
+              "description": "Name of a previous call step whose output serves as the lookup table."
+            },
+            "match": {
+              "$ref": "#/$defs/IdentifierKebab",
+              "description": "Name of the key field in the index to match against."
+            },
+            "lookupValue": {
+              "type": "string",
+              "description": "JsonPath expression resolving to the value(s) to look up."
+            },
+            "outputParameters": {
+              "type": "array",
+              "description": "List of field names to extract from the matched index entries.",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "index",
+            "match",
+            "lookupValue",
+            "outputParameters"
+          ],
+          "unevaluatedProperties": false
+        }
+      ]
+    },
+    "OperationStep": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/OperationStepCall"
+        },
+        {
+          "$ref": "#/$defs/OperationStepLookup"
+        }
+      ]
+    },
+    "StepOutputMapping": {
+      "type": "object",
+      "description": "Describes how to map the output of an operation step to the input of another step or to the output of the exposed operation",
+      "properties": {
+        "targetName": {
+          "$ref": "#/$defs/IdentifierExtended",
+          "description": "The name of the parameter to map to. It can be an input parameter of a next step or an output parameter of the exposed operation"
+        },
+        "value": {
+          "type": "string",
+          "description": "A JsonPath reference to the value to map from. E.g. $.get-database.database_id"
+        }
+      },
+      "required": [
+        "targetName",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "RequestBodyJson": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "json"
+        },
+        "data": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object"
+            },
+            {
+              "type": "array"
+            }
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    "RequestBodyText": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "text",
+            "xml",
+            "sparql"
+          ]
+        },
+        "data": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    "RequestBodyFormUrlEncoded": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "formUrlEncoded"
+        },
+        "data": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    "RequestBodyMultipartFormPart": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "contentType": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "RequestBodyMultipartForm": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "multipartForm"
+        },
+        "data": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RequestBodyMultipartFormPart"
+          }
+        }
+      },
+      "required": [
+        "type",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    "RequestBodyRaw": {
+      "type": "string",
+      "description": "A raw body string. When used with a YAML block scalar (|), the string is sent as-is. Interpreted as JSON by default."
+    },
+    "RequestBody": {
+      "description": "Request body configuration",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/RequestBodyJson"
+        },
+        {
+          "$ref": "#/$defs/RequestBodyText"
+        },
+        {
+          "$ref": "#/$defs/RequestBodyFormUrlEncoded"
+        },
+        {
+          "$ref": "#/$defs/RequestBodyMultipartForm"
+        },
+        {
+          "$ref": "#/$defs/RequestBodyRaw"
+        }
+      ]
+    },
+    "ForwardConfig": {
+      "type": "object",
+      "description": "Configuration for forwarding requests to a consumed namespace",
+      "properties": {
+        "targetNamespace": {
+          "$ref": "#/$defs/IdentifierKebab",
+          "description": "The namespace to forward requests to"
+        },
+        "trustedHeaders": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of headers that can be forwarded",
+          "minItems": 1
+        }
+      },
+      "required": [
+        "targetNamespace"
+      ],
+      "additionalProperties": false
+    },
+    "Authentication": {
+      "description": "Authentication",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/AuthBasic"
+        },
+        {
+          "$ref": "#/$defs/AuthApiKey"
+        },
+        {
+          "$ref": "#/$defs/AuthBearer"
+        },
+        {
+          "$ref": "#/$defs/AuthDigest"
+        },
+        {
+          "$ref": "#/$defs/AuthOAuth2"
+        }
+      ]
+    },
+    "AuthBasic": {
+      "type": "object",
+      "description": "Basic authentication",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "basic"
+        },
+        "username": {
+          "type": "string",
+          "description": "Username for basic auth"
+        },
+        "password": {
+          "type": "string",
+          "description": "Password for basic auth"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    "AuthApiKey": {
+      "type": "object",
+      "description": "API Key authentication",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "apikey"
+        },
+        "key": {
+          "type": "string",
+          "description": "API key name"
+        },
+        "value": {
+          "type": "string",
+          "description": "API key value"
+        },
+        "placement": {
+          "type": "string",
+          "enum": [
+            "header",
+            "query"
+          ],
+          "description": "Where to place the API key"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    "AuthBearer": {
+      "type": "object",
+      "description": "Bearer token authentication",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "bearer"
+        },
+        "token": {
+          "type": "string",
+          "description": "Bearer token"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    "AuthDigest": {
+      "type": "object",
+      "description": "Digest authentication",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "digest"
+        },
+        "username": {
+          "type": "string",
+          "description": "Username for digest auth"
+        },
+        "password": {
+          "type": "string",
+          "description": "Password for digest auth"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    "AuthOAuth2": {
+      "type": "object",
+      "description": "OAuth 2.1 resource server authentication. The server validates bearer tokens issued by an external authorization server.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "oauth2"
+        },
+        "authorizationServerUri": {
+          "type": "string",
+          "format": "uri",
+          "description": "Issuer URI of the OAuth 2.1 authorization server. The engine derives metadata endpoints (.well-known/oauth-authorization-server) from this URI."
+        },
+        "resource": {
+          "type": "string",
+          "format": "uri",
+          "description": "Canonical URI of this server (RFC 8707). Used for audience validation and Protected Resource Metadata."
+        },
+        "scopes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Scopes this resource server recognizes."
+        },
+        "audience": {
+          "type": "string",
+          "description": "Expected 'aud' claim in the JWT. Defaults to the 'resource' URI if not set."
+        },
+        "tokenValidation": {
+          "type": "string",
+          "enum": [
+            "jwks",
+            "introspection"
+          ],
+          "default": "jwks",
+          "description": "How to validate incoming access tokens. 'jwks' (default): fetch the AS public keys and validate JWT signatures locally. 'introspection': call the AS token introspection endpoint (RFC 7662) for each request."
+        }
+      },
+      "required": [
+        "type",
+        "authorizationServerUri",
+        "resource"
+      ],
+      "additionalProperties": false
+    },
+    "ExposesSkill": {
+      "type": "object",
+      "description": "Skill server adapter — metadata and catalog layer. Skills declare tools derived from sibling api or mcp adapters or defined as local file instructions. Does not execute tools.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "skill"
+        },
+        "address": {
+          "$ref": "#/$defs/Address"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "namespace": {
+          "$ref": "#/$defs/IdentifierKebab",
+          "description": "Unique identifier for this skill server"
+        },
+        "description": {
+          "type": "string",
+          "description": "Description of this skill server's purpose"
+        },
+        "authentication": {
+          "$ref": "#/$defs/Authentication"
+        },
+        "skills": {
+          "type": "array",
+          "description": "Array of skill definitions. Each skill declares tools from sibling adapters or local file instructions, or stands alone as purely descriptive.",
+          "items": {
+            "$ref": "#/$defs/ExposedSkill"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "type",
+        "port",
+        "namespace",
+        "skills"
+      ],
+      "additionalProperties": false
+    },
+    "ExposedSkill": {
+      "type": "object",
+      "description": "A skill definition with full Agent Skills Spec frontmatter. Declares tools derived from sibling api or mcp adapters or defined as local file instructions, or stands alone as purely descriptive (no tools).",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/IdentifierKebab",
+          "description": "Skill identifier (kebab-case, 1-64 chars)"
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1024,
+          "description": "What the skill does and when to use it. Used for agent discovery."
+        },
+        "license": {
+          "type": "string",
+          "description": "License identifier (e.g., MIT, Apache-2.0)"
+        },
+        "compatibility": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Compatibility notes and requirements"
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Arbitrary key-value metadata (author, category, tags, ecosystem, etc.)"
+        },
+        "allowed-tools": {
+          "type": "string",
+          "maxLength": 1024,
+          "description": "Space-delimited list of pre-approved tool names (Agent Skills Spec)"
+        },
+        "argument-hint": {
+          "type": "string",
+          "description": "Hint text shown when agents invoke this skill via slash command (Agent Skills Spec)"
+        },
+        "user-invocable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether agents can invoke this skill as a slash command (Agent Skills Spec)"
+        },
+        "disable-model-invocation": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether to prevent auto-loading this skill based on context (Agent Skills Spec)"
+        },
+        "location": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^file:///",
+          "description": "file:/// URI to a directory containing SKILL.md and supporting files. Required when any tool uses 'instruction'."
+        },
+        "tools": {
+          "type": "array",
+          "description": "Tools declared by this skill. Each tool is derived from a sibling adapter or is a local file instruction.",
+          "items": {
+            "$ref": "#/$defs/SkillTool"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "name",
+        "description"
+      ],
+      "additionalProperties": false
+    },
+    "SkillTool": {
+      "type": "object",
+      "description": "A tool declared within a skill. Exactly one of 'from' (derived from a sibling api or mcp adapter) or 'instruction' (local file path relative to the skill's location) must be specified.",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/IdentifierKebab",
+          "description": "Tool identifier (kebab-case)"
+        },
+        "description": {
+          "type": "string",
+          "description": "What the tool does. Used for agent discovery."
+        },
+        "from": {
+          "type": "object",
+          "description": "Derive this tool from a sibling api or mcp adapter.",
+          "properties": {
+            "sourceNamespace": {
+              "type": "string",
+              "description": "Namespace of a sibling exposes[] entry of type api or mcp"
+            },
+            "action": {
+              "type": "string",
+              "description": "Operation name (api) or tool name (mcp) in the source adapter"
+            }
+          },
+          "required": [
+            "sourceNamespace",
+            "action"
+          ],
+          "additionalProperties": false
+        },
+        "instruction": {
+          "type": "string",
+          "description": "File path relative to the skill's location directory containing the tool instruction content"
+        }
+      },
+      "required": [
+        "name",
+        "description"
+      ],
+      "oneOf": [
+        {
+          "required": [
+            "from"
+          ]
+        },
+        {
+          "required": [
+            "instruction"
+          ]
+        }
+      ],
+      "additionalProperties": false
+    }
+  }
+}
