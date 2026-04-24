@@ -715,6 +715,9 @@
               },
               {
                 "$ref": "#/$defs/ExposesSkill"
+              },
+              {
+                "$ref": "#/$defs/ExposesControl"
               }
             ]
           },
@@ -2209,6 +2212,11 @@
           "type": "string",
           "description": "Expected 'aud' claim in the JWT. Defaults to the 'resource' URI if not set."
         },
+        "tokenEndpoint": {
+          "type": "string",
+          "format": "uri",
+          "description": "Token endpoint URI of the authorization server. Used by the OpenAPI exporter as the clientCredentials tokenUrl. When omitted, the exporter falls back to authorizationServerUri (with a warning)."
+        },
         "tokenValidation": {
           "type": "string",
           "enum": [
@@ -2392,6 +2400,215 @@
         }
       ],
       "additionalProperties": false
+    },
+    "ExposesControl": {
+      "type": "object",
+      "description": "Control adapter — management plane for health, metrics, traces, and runtime diagnostics. Endpoints are engine-provided, not user-defined.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "control"
+        },
+        "address": {
+          "$ref": "#/$defs/Address",
+          "default": "localhost",
+          "description": "Bind address for the control port. Defaults to localhost for security."
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "description": "TCP port for the control adapter."
+        },
+        "authentication": {
+          "$ref": "#/$defs/Authentication",
+          "description": "Optional authentication for the control port. Reuses the same Authentication model as business adapters."
+        },
+        "management": {
+          "$ref": "#/$defs/ControlManagementSpec"
+        },
+        "observability": {
+          "$ref": "#/$defs/ObservabilitySpec"
+        }
+      },
+      "required": [
+        "type",
+        "port"
+      ],
+      "additionalProperties": false
+    },
+    "ControlManagementSpec": {
+      "type": "object",
+      "description": "Toggle individual control port management endpoint groups. Does not include OTel-dependent endpoints (metrics, traces) — those are configured under observability.",
+      "properties": {
+        "health": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable /health/live and /health/ready endpoints."
+        },
+        "info": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable /status and /config endpoints. Disabled by default."
+        },
+        "reload": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable POST /config/reload. Disabled by default."
+        },
+        "validate": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable POST /config/validate (dry-run validation). Disabled by default."
+        },
+        "logs": {
+          "oneOf": [
+            {
+              "type": "boolean",
+              "description": "Simple mode: true enables all /logs endpoints (level control + streaming with default max-subscribers). false disables all."
+            },
+            {
+              "$ref": "#/$defs/ControlLogsEndpointSpec"
+            }
+          ],
+          "default": false,
+          "description": "Configure /logs endpoints for log level control and SSE streaming. Accepts a boolean (simple) or an object (advanced)."
+        }
+      },
+      "additionalProperties": false
+    },
+    "ControlLogsEndpointSpec": {
+      "type": "object",
+      "description": "Advanced configuration for /logs endpoints (log level control and SSE streaming).",
+      "properties": {
+        "level-control": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable /logs and /logs/{logger} endpoints for live log level control. Default: true (enabled when logs object is present)."
+        },
+        "stream": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable /logs/stream SSE endpoint. Disabled by default."
+        },
+        "max-subscribers": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20,
+          "default": 5,
+          "description": "Maximum concurrent SSE subscribers for log streaming."
+        }
+      },
+      "additionalProperties": false
+    },
+    "ObservabilitySpec": {
+      "type": "object",
+      "description": "Spec-driven observability configuration. Controls distributed tracing, metrics collection, and their local exposure on the control port. All fields are optional — defaults to OTel env vars when not specified.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable or disable observability. Defaults to true."
+        },
+        "metrics": {
+          "$ref": "#/$defs/ObservabilityMetricsSpec"
+        },
+        "traces": {
+          "$ref": "#/$defs/ObservabilityTracesSpec"
+        },
+        "exporters": {
+          "$ref": "#/$defs/ObservabilityExportersSpec"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "ObservabilityMetricsSpec": {
+      "type": "object",
+      "description": "Metrics collection and local exposure configuration.",
+      "properties": {
+        "local": {
+          "$ref": "#/$defs/ObservabilityLocalEndpointSpec",
+          "description": "Controls the /metrics Prometheus scrape endpoint on the control port."
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "ObservabilityTracesSpec": {
+      "type": "object",
+      "description": "Trace sampling, propagation, and local exposure configuration.",
+      "properties": {
+        "sampling": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 1.0,
+          "description": "Trace sampling rate. 1.0 = sample all, 0.1 = sample 10%."
+        },
+        "propagation": {
+          "type": "string",
+          "enum": ["w3c", "b3"],
+          "default": "w3c",
+          "description": "Context propagation format for outgoing HTTP calls."
+        },
+        "local": {
+          "$ref": "#/$defs/ObservabilityTracesLocalSpec",
+          "description": "Controls the /traces endpoint on the control port."
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "ObservabilityLocalEndpointSpec": {
+      "type": "object",
+      "description": "Toggle for a local observability endpoint on the control port.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable or disable the local endpoint. Defaults to true."
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "ObservabilityTracesLocalSpec": {
+      "type": "object",
+      "description": "Configuration for the /traces endpoint on the control port.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the /traces endpoint. Defaults to true."
+        },
+        "buffer-size": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 10000,
+          "default": 100,
+          "description": "Maximum number of completed trace summaries to retain in the ring buffer."
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "ObservabilityExportersSpec": {
+      "type": "object",
+      "description": "Exporter configuration container.",
+      "properties": {
+        "otlp": {
+          "$ref": "#/$defs/ObservabilityOtlpExporterSpec"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "ObservabilityOtlpExporterSpec": {
+      "type": "object",
+      "description": "OTLP exporter endpoint configuration.",
+      "properties": {
+        "endpoint": {
+          "type": "string",
+          "description": "OTLP exporter endpoint. Supports Mustache expressions for binds."
+        }
+      },
+      "required": ["endpoint"],
+      "unevaluatedProperties": false
     }
   }
 }
