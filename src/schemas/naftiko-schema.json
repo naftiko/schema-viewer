@@ -1796,7 +1796,8 @@
           "type": "string",
           "enum": [
             "call",
-            "lookup"
+            "lookup",
+            "script"
           ]
         },
         "name": {
@@ -1878,6 +1879,51 @@
         }
       ]
     },
+    "OperationStepScript": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/OperationStepBase"
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "script"
+            },
+            "name": true,
+            "language": {
+              "type": "string",
+              "enum": ["javascript", "python", "groovy"],
+              "description": "GraalVM language identifier for the script engine. Optional when 'management.scripting.defaultLanguage' is set in the Control Port — the engine falls back to the default."
+            },
+            "location": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^file:///",
+              "description": "file:/// URI pointing to the scripts directory. Follows the same convention as ExposedSkill.location — a directory root from which 'file' and 'dependencies' are resolved as relative paths. Optional when 'management.scripting.defaultLocation' is set in the Control Port — the engine falls back to the default."
+            },
+            "file": {
+              "type": "string",
+              "description": "Relative path to the main script file within the 'location' directory. The script must assign to the 'result' variable to produce output. Path segments must match [a-zA-Z0-9._-]+ (same validation as Skill instruction paths).",
+              "minLength": 1
+            },
+            "dependencies": {
+              "type": "array",
+              "description": "Relative paths to dependent script files within the 'location' directory, pre-evaluated in order before the main script. Each dependent script can define helper functions, constants, or shared logic.",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1
+            },
+            "with": {
+              "$ref": "#/$defs/WithInjector"
+            }
+          },
+          "required": ["file"],
+          "unevaluatedProperties": false
+        }
+      ]
+    },
     "OperationStep": {
       "oneOf": [
         {
@@ -1885,6 +1931,9 @@
         },
         {
           "$ref": "#/$defs/OperationStepLookup"
+        },
+        {
+          "$ref": "#/$defs/OperationStepScript"
         }
       ]
     },
@@ -2473,6 +2522,9 @@
           ],
           "default": false,
           "description": "Configure /logs endpoints for log level control and SSE streaming. Accepts a boolean (simple) or an object (advanced)."
+        },
+        "scripting": {
+          "$ref": "#/$defs/ScriptingManagementSpec"
         }
       },
       "additionalProperties": false
@@ -2497,6 +2549,49 @@
           "maximum": 20,
           "default": 5,
           "description": "Maximum concurrent SSE subscribers for log streaming."
+        }
+      },
+      "additionalProperties": false
+    },
+    "ScriptingManagementSpec": {
+      "type": "object",
+      "description": "Scripting governance controls exposed via the Control Port. Configures defaults, limits, and runtime toggles for script steps.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Runtime toggle to enable or disable script step execution. When false, all script steps fail fast with a descriptive error. Overrides the NAFTIKO_SCRIPTING env var when set."
+        },
+        "defaultLocation": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^file:///",
+          "description": "Default scripts directory for all script steps. When set, individual steps can omit 'location' and the engine resolves 'file' and 'dependencies' from this directory. Steps with an explicit 'location' override this default."
+        },
+        "defaultLanguage": {
+          "type": "string",
+          "enum": ["javascript", "python", "groovy"],
+          "description": "Default language for all script steps. When set, individual steps can omit 'language' and the engine uses this default. Steps with an explicit 'language' override this default."
+        },
+        "timeout": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 60000,
+          "description": "Execution timeout in milliseconds for each script step. Overrides the engine default (60000 ms)."
+        },
+        "statementLimit": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 100000,
+          "description": "Maximum number of statements a script can execute. Applies to JavaScript and Python only. Groovy scripts are not subject to this limit. Overrides the engine default (100,000)."
+        },
+        "allowedLanguages": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["javascript", "python", "groovy"]
+          },
+          "description": "Restrict which script languages are permitted. If omitted, all languages supported by the build are allowed."
         }
       },
       "additionalProperties": false
