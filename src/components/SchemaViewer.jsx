@@ -4,7 +4,7 @@ import MonacoEditor from '@monaco-editor/react';
 import SchemaExplorer from './SchemaExplorer';
 import SchemaGraph from './SchemaGraph';
 import { parseSchema } from '../utils/schemaParser';
-import opencollectionSchema from '../schemas/naftiko-schema.json';
+import opencollectionSchema from '../schemas/ikanos-schema.json';
 
 const SchemaViewer = () => {
   const [schema, setSchema] = useState(null);
