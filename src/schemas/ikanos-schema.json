@@ -22,12 +22,15 @@
             "$ref": "#/$defs/ConsumesHttp"
           },
           {
+            "$ref": "#/$defs/ConsumesMcp"
+          },
+          {
             "$ref": "#/$defs/ImportEntry"
           }
         ]
       },
       "minItems": 1,
-      "description": "External HTTP API adapters declared at file scope. Each entry is either an inline `ConsumesHttp` (with `type: http`) or an `ImportEntry` (with a `from` URI). Standalone consumes files use this section at root."
+      "description": "External adapters declared at file scope. Each entry is an inline `ConsumesHttp` (`type: http`), an inline `ConsumesMcp` (`type: mcp`), or an `ImportEntry` (with a `from` URI). Standalone consumes files use this section at root."
     },
     "exposes": {
       "type": "array",
@@ -816,11 +819,14 @@
         },
         "consumes": {
           "type": "array",
-          "description": "Consumed client adapters. Inline `ConsumesHttp` entries or `ImportEntry` references to a shared consumes file.",
+          "description": "Consumed client adapters. Inline `ConsumesHttp` or `ConsumesMcp` entries, or `ImportEntry` references to a shared consumes file.",
           "items": {
             "oneOf": [
               {
                 "$ref": "#/$defs/ConsumesHttp"
+              },
+              {
+                "$ref": "#/$defs/ConsumesMcp"
               },
               {
                 "$ref": "#/$defs/ImportEntry"
@@ -929,8 +935,8 @@
         },
         "call": {
           "type": "string",
-          "description": "Reference to the consumed operation. Format: {namespace}.{operationId}.",
-          "pattern": "^[a-zA-Z0-9-]+\\.[a-zA-Z0-9-]+$"
+          "description": "Reference to a consumed operation, or to another aggregate flow. Format: {namespace}.{name}, split on the first dot: the name may contain dots and underscores (consumed MCP tools are keyed by their upstream name).",
+          "pattern": "^[a-zA-Z0-9-]+\\.[a-zA-Z0-9-_.]+$"
         },
         "with": {
           "$ref": "#/$defs/WithInjector"
@@ -1121,6 +1127,10 @@
           "$ref": "#/$defs/Authentication",
           "description": "Authentication required on incoming MCP requests. Applied at the transport level; all tools, resources, and prompts under this adapter are protected. Use `oauth2` for standards-compliant MCP authorization servers."
         },
+        "trust": {
+          "$ref": "#/$defs/McpTrust",
+          "description": "How this adapter learns which agent is calling, to record it on traces and logs. Omitted means mode `none`. Not allowed with `transport: stdio`."
+        },
         "tools": {
           "type": "object",
           "propertyNames": {
@@ -1171,8 +1181,17 @@
             "transport"
           ],
           "not": {
-            "required": [
-              "port"
+            "anyOf": [
+              {
+                "required": [
+                  "port"
+                ]
+              },
+              {
+                "required": [
+                  "trust"
+                ]
+              }
             ]
           }
         },
@@ -1185,6 +1204,111 @@
           "required": [
             "port"
           ]
+        }
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "trust": {
+                "properties": {
+                  "mode": {
+                    "const": "verify"
+                  }
+                },
+                "required": [
+                  "mode"
+                ]
+              }
+            },
+            "required": [
+              "trust"
+            ]
+          },
+          "then": {
+            "properties": {
+              "authentication": {
+                "properties": {
+                  "type": {
+                    "const": "oauth2"
+                  }
+                },
+                "required": [
+                  "type"
+                ]
+              }
+            },
+            "required": [
+              "authentication"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "McpTrust": {
+      "type": "object",
+      "description": "Agent identity trust for an HTTP MCP adapter. The identity is recorded on traces and logs for audit only: it never authorizes a request and is never forwarded to consumed APIs.",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "forwarded",
+            "verify",
+            "none"
+          ],
+          "description": "`forwarded`: the gateway in front of this adapter is the authentication boundary. The identity is read from `agentIdentityHeader`, and a direct peer outside `trustedNetworks` is refused with HTTP 403 before any MCP handling. There is no mixed mode: for direct, gateway-free access, expose a separate MCP adapter with its own `authentication` and `trust`. Pair `forwarded` with `authentication` so the gateway itself is also authenticated (recommended). `verify`: take the identity from the token validated by `authentication: oauth2` (required). The `sub` claim is used, else `client_id`; a value that breaks the `agentIdentityHeader` length or character rules is ignored with a warning, as with a subject containing spaces. `none`: do not record an agent identity (same as omitting `trust`)."
+        },
+        "agentIdentityHeader": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9-]+$",
+          "description": "Header carrying the agent identity, e.g. `X-Agent-Id`. The gateway MUST overwrite or remove any value of this header sent by the agent: Ikanos cannot tell a value the gateway set from one it passed through. A value that is sent more than once, is longer than 256 characters, or contains characters other than letters, digits and `. _ ~ : @ / + = | -` (no spaces, quotes, commas or semicolons) is ignored, with a rate-limited warning that never includes the value. `forwarded` mode only."
+        },
+        "trustedNetworks": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9A-Fa-f:.]+/[0-9]{1,3}$",
+            "description": "An IPv4 or IPv6 network in CIDR notation, e.g. `10.20.0.0/16` or `fd00:10::/48`. Keep it to the gateway's own addresses: the Polychro rules warn on very broad networks and on loopback when the adapter listens beyond loopback."
+          },
+          "minItems": 1,
+          "description": "Networks of the gateway. Only direct peers in these networks are served; `X-Forwarded-For` is never used for this check. Every other peer gets HTTP 403 on every path of this adapter, including health probes (for example Kubernetes liveness and readiness probes) and, with `authentication: oauth2`, `/.well-known/oauth-protected-resource`: add the probes' source network here, or probe the control port instead. `forwarded` mode only."
+        }
+      },
+      "required": [
+        "mode"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "forwarded"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "trustedNetworks",
+              "agentIdentityHeader"
+            ]
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "agentIdentityHeader"
+                  ]
+                },
+                {
+                  "required": [
+                    "trustedNetworks"
+                  ]
+                }
+              ]
+            }
+          }
         }
       ],
       "additionalProperties": false
@@ -1226,7 +1350,7 @@
         "call": {
           "type": "string",
           "description": "For simple cases, the reference to the consumed operation. Format: {namespace}.{operationId}.",
-          "pattern": "^[a-zA-Z0-9-]+\\.[a-zA-Z0-9-]+$"
+          "pattern": "^[a-zA-Z0-9-]+\\.[a-zA-Z0-9-_.]+$"
         },
         "with": {
           "$ref": "#/$defs/WithInjector"
@@ -1251,6 +1375,9 @@
         },
         "hints": {
           "$ref": "#/$defs/McpToolHints"
+        },
+        "ui": {
+          "$ref": "#/$defs/McpToolUi"
         },
         "outputParameters": true
       },
@@ -1334,6 +1461,34 @@
       },
       "additionalProperties": false
     },
+    "McpToolUi": {
+      "type": "object",
+      "description": "MCP Apps metadata (SEP-1865, extension io.modelcontextprotocol/ui) linking the tool to a predeclared ui:// view. Emitted as _meta.ui in tools/list.",
+      "properties": {
+        "resourceUri": {
+          "type": "string",
+          "pattern": "^ui://",
+          "description": "URI of a ui:// resource declared on this MCP server. For a static directory resource, use the expanded file URI (e.g. ui://weather/forecast/index.html)."
+        },
+        "visibility": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "model",
+              "app"
+            ]
+          },
+          "description": "Who may call the tool. Host-enforced hint, not access control. When omitted, the host default (model and app) applies."
+        }
+      },
+      "required": [
+        "resourceUri"
+      ],
+      "additionalProperties": false
+    },
     "McpToolInputParameter": {
       "type": "object",
       "description": "Declares an input parameter for an MCP tool. These become properties in the tool's JSON Schema input definition.",
@@ -1395,7 +1550,7 @@
         "call": {
           "type": "string",
           "description": "For dynamic resources: reference to the consumed operation. Format: {namespace}.{operationId}.",
-          "pattern": "^[a-zA-Z0-9-]+\\.[a-zA-Z0-9-]+$"
+          "pattern": "^[a-zA-Z0-9-]+\\.[a-zA-Z0-9-_.]+$"
         },
         "with": {
           "$ref": "#/$defs/WithInjector"
@@ -1429,6 +1584,9 @@
           "format": "uri",
           "pattern": "^file:///",
           "description": "For static resources: file:/// URI pointing to a directory whose files are served as MCP resources."
+        },
+        "ui": {
+          "$ref": "#/$defs/McpResourceUi"
         }
       },
       "required": [
@@ -1496,6 +1654,75 @@
           }
         }
       ],
+      "additionalProperties": false
+    },
+    "McpResourceUi": {
+      "type": "object",
+      "description": "MCP Apps metadata (SEP-1865) for a ui:// view: security envelope and rendering preferences. Emitted as _meta.ui on both the resources/list entry and the resources/read content item. The host applies it; Ikanos does not enforce CSP.",
+      "properties": {
+        "csp": {
+          "type": "object",
+          "description": "Content Security Policy domains requested by the view. Hosts MAY restrict further but MUST NOT allow undeclared domains.",
+          "properties": {
+            "connectDomains": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Origins the view may reach with fetch, XHR or WebSocket. Opens a data path the capability does not govern."
+            },
+            "resourceDomains": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Origins for scripts, styles, images, fonts and media. Wildcard subdomains allowed."
+            },
+            "frameDomains": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Origins allowed in nested iframes."
+            },
+            "baseUriDomains": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Allowed base-uri origins."
+            }
+          },
+          "additionalProperties": false
+        },
+        "permissions": {
+          "type": "object",
+          "description": "Browser permissions requested by the view. true = requested. Emitted as empty-object presence flags.",
+          "properties": {
+            "camera": {
+              "type": "boolean"
+            },
+            "microphone": {
+              "type": "boolean"
+            },
+            "geolocation": {
+              "type": "boolean"
+            },
+            "clipboardWrite": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        "domain": {
+          "type": "string",
+          "description": "Host-specific sandbox origin for the view. Passed through verbatim."
+        },
+        "prefersBorder": {
+          "type": "boolean",
+          "description": "Whether the view prefers a visible border. Host defaults vary, so set it explicitly."
+        }
+      },
       "additionalProperties": false
     },
     "McpPrompt": {
@@ -1722,7 +1949,7 @@
         "call": {
           "type": "string",
           "description": "For simple cases, the reference to the consumed operation. Format: {namespace}.{operationId}. E.g.: notion.get-database or github.get-user",
-          "pattern": "^[a-zA-Z0-9-]+\\.[a-zA-Z0-9-]+$"
+          "pattern": "^[a-zA-Z0-9-]+\\.[a-zA-Z0-9-_.]+$"
         },
         "with": {
           "$ref": "#/$defs/WithInjector"
@@ -2144,6 +2371,123 @@
       ],
       "additionalProperties": false
     },
+    "ConsumesMcp": {
+      "type": "object",
+      "description": "Inline MCP server adapter. Declares a curated subset of an upstream MCP server's tools, callable from steps exactly like a consumed HTTP operation (`call: namespace.tool`).\n\n**When to use** \u2014 Compose a right-sized upstream MCP capability (for example another Ikanos capability's `exposes: type: mcp` surface) without bypassing its tool contract.\n**Execution model** \u2014 Stateless Streamable HTTP, MCP `2026-07-28`: one `tools/call` JSON-RPC POST per invocation, no `initialize` handshake and no session. The response document is `structuredContent` when present, otherwise the single text content (parsed as JSON when possible). Upstream tool descriptions and annotations are never forwarded to any exposed surface.\n**See also** \u2014 `ConsumesHttp`, `McpTool`.",
+      "properties": {
+        "namespace": {
+          "$ref": "#/$defs/IdentifierKebab",
+          "description": "Unique adapter identifier (kebab-case). Used as the call target: `call: namespace.tool`."
+        },
+        "type": {
+          "type": "string",
+          "const": "mcp"
+        },
+        "description": {
+          "type": "string",
+          "description": "Human- and agent-readable description of this upstream MCP server."
+        },
+        "endpoint": {
+          "type": "string",
+          "description": "Streamable HTTP endpoint of the upstream MCP server. No path composition is applied. Example: `https://billing.example.com/mcp`.",
+          "pattern": "^https?://[^/]+(/.*)?$"
+        },
+        "authentication": {
+          "$ref": "#/$defs/Authentication",
+          "description": "Credential sent to the upstream MCP server on every request. The exposed-side caller token is never forwarded."
+        },
+        "discovery": {
+          "type": [
+            "string",
+            "boolean"
+          ],
+          "enum": [
+            "verify",
+            "off",
+            false
+          ],
+          "default": "verify",
+          "description": "`verify` (default): at start-up, list upstream tools and fail if a declared tool or a required upstream argument is missing; cache the advertised `outputSchema` for output validation. `off`: no start-up call, no output validation. YAML 1.1 reads a bare `off` as boolean `false`, so `false` is accepted as an alias of `off`."
+        },
+        "tools": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-zA-Z0-9-_.]+$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/ConsumedMcpTool"
+          },
+          "minProperties": 1,
+          "description": "Callable upstream tools, keyed by the upstream tool name."
+        }
+      },
+      "required": [
+        "namespace",
+        "type",
+        "endpoint",
+        "tools"
+      ],
+      "additionalProperties": false
+    },
+    "ConsumedMcpTool": {
+      "type": "object",
+      "description": "One consumed MCP tool. Fields mirror `McpTool` on the exposing side (`description`, `display`, `tags`, `inputParameters`, `hints`) plus consumed `outputParameters` evaluated against the selected response document.",
+      "properties": {
+        "display": {
+          "type": "string",
+          "description": "Human-readable display name."
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "description": {
+          "type": "string",
+          "description": "Local description of the tool. Never copied from the upstream."
+        },
+        "inputParameters": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-zA-Z0-9-_*]+$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/McpToolInputParameter"
+          },
+          "description": "Upstream tool arguments, keyed by argument name. Values come from the calling step's `with`."
+        },
+        "hints": {
+          "$ref": "#/$defs/McpToolHints",
+          "description": "Locally declared behaviour hints. Never derived from upstream annotations."
+        },
+        "outputParameters": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/ConsumedOutputParameter"
+          },
+          "description": "Values extracted from the response document with JsonPath."
+        },
+        "validateOutput": {
+          "type": [
+            "string",
+            "boolean"
+          ],
+          "enum": [
+            "fail",
+            "warn",
+            "off",
+            false
+          ],
+          "default": "fail",
+          "description": "What to do when `structuredContent` violates the upstream `outputSchema` cached by `discovery: verify`. YAML 1.1 reads a bare `off` as boolean `false`, so `false` is accepted as an alias of `off`."
+        }
+      },
+      "required": [
+        "description"
+      ],
+      "additionalProperties": false
+    },
     "OperationStepBase": {
       "type": "object",
       "properties": {
@@ -2172,8 +2516,8 @@
             },
             "call": {
               "type": "string",
-              "description": "Reference to the consumed operation. Format: {namespace}.{operationId}.",
-              "pattern": "^[a-zA-Z0-9-]+\\.[a-zA-Z0-9-]+$"
+              "description": "Reference to a consumed operation, or to another aggregate flow. Format: {namespace}.{name}, split on the first dot: the name may contain dots and underscores (consumed MCP tools are keyed by their upstream name).",
+              "pattern": "^[a-zA-Z0-9-]+\\.[a-zA-Z0-9-_.]+$"
             },
             "with": {
               "$ref": "#/$defs/WithInjector"
@@ -2891,6 +3235,9 @@
         },
         "scripting": {
           "$ref": "#/$defs/ScriptingManagementSpec"
+        },
+        "flows": {
+          "$ref": "#/$defs/FlowManagementSpec"
         }
       },
       "additionalProperties": false
@@ -2915,6 +3262,19 @@
           "maximum": 20,
           "default": 5,
           "description": "Maximum concurrent SSE subscribers for log streaming."
+        }
+      },
+      "additionalProperties": false
+    },
+    "FlowManagementSpec": {
+      "type": "object",
+      "description": "Limits on aggregate flow execution. An aggregate flow may call another flow with `call: {namespace}.{flow-name}`; cycles are rejected at load time.",
+      "properties": {
+        "maxCallDepth": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 8,
+          "description": "Maximum number of aggregate flows active on one call chain, counting the first one. A call that would exceed it fails with an error naming the chain."
         }
       },
       "additionalProperties": false
