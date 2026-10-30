@@ -43,9 +43,6 @@
             "$ref": "#/$defs/ExposesMcp"
           },
           {
-            "$ref": "#/$defs/ExposesSkill"
-          },
-          {
             "$ref": "#/$defs/ExposesControl"
           },
           {
@@ -54,7 +51,7 @@
         ]
       },
       "minItems": 1,
-      "description": "Exposed server adapters declared at file scope. Each entry is either an inline adapter (rest/mcp/skill/control) or an `ImportEntry` (with a `from` URI). Standalone exposes files use this section at root."
+      "description": "Exposed server adapters declared at file scope. Each entry is either an inline adapter (rest/mcp/control) or an `ImportEntry` (with a `from` URI). Standalone exposes files use this section at root."
     },
     "aggregates": {
       "type": "array",
@@ -224,6 +221,12 @@
       "description": "Kebab-case identifier (alphanumeric and hyphens).",
       "pattern": "^[a-zA-Z0-9-]+$"
     },
+    "SkillName": {
+      "type": "string",
+      "description": "Agent Skills name: lowercase letters, digits and single hyphens, no leading or trailing hyphen, at most 64 characters.",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "maxLength": 64
+    },
     "IdentifierExtended": {
       "type": "string",
       "description": "Extended identifier (alphanumeric, hyphens, underscores, and wildcard).",
@@ -261,6 +264,21 @@
         "value": {
           "type": "string",
           "description": "Value of the parameter. Can be a static value or an expression resolved from the execution context (e.g. $this.namespace.param)"
+        },
+        "wireName": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Name sent on the wire when it differs from the parameter key, e.g. `status[]` for APIs that read list filters with the Rails/PHP `name[]` convention. The key stays the name used in templates and `with:`."
+        },
+        "style": {
+          "type": "string",
+          "enum": ["form", "spaceDelimited", "pipeDelimited"],
+          "default": "form",
+          "description": "How a list value is serialized in a query parameter, as in OpenAPI. `form` repeats the parameter or joins with commas (see `explode`); `spaceDelimited` and `pipeDelimited` join the elements with a space or `|`. Scalars are not affected."
+        },
+        "explode": {
+          "type": "boolean",
+          "description": "For `form` style: `true` (default) sends one parameter per list element (`status[]=a&status[]=b`); `false` sends one comma-separated value (`ids=a,b`)."
         }
       },
       "required": [
@@ -589,6 +607,7 @@
       "unevaluatedProperties": false
     },
     "OrchestratedOutputParameterArray": {
+      "description": "Orchestrated array output. With `items`, each element is shaped by it. Without `items`, the mapped array is returned as is (any elements).",
       "allOf": [
         {
           "$ref": "#/$defs/OrchestratedOutputParameterBase"
@@ -605,15 +624,13 @@
               },
               "minProperties": 1
             }
-          },
-          "required": [
-            "items"
-          ]
+          }
         }
       ],
       "unevaluatedProperties": false
     },
     "OrchestratedOutputParameterObject": {
+      "description": "Orchestrated object output. With `properties`, every declared property is present and shaped; other keys are kept as is. Without `properties`, the mapped object is returned as is (any keys), for objects whose keys are data, such as user-defined field names.",
       "allOf": [
         {
           "$ref": "#/$defs/OrchestratedOutputParameterBase"
@@ -629,10 +646,7 @@
                 "$ref": "#/$defs/OrchestratedOutputParameter"
               }
             }
-          },
-          "required": [
-            "properties"
-          ]
+          }
         }
       ],
       "unevaluatedProperties": false
@@ -702,6 +716,33 @@
           "$ref": "#/$defs/IPv6"
         }
       ]
+    },
+    "MountPath": {
+      "type": "string",
+      "description": "Mount prefix of an exposed adapter on its listener: `/` for the root, or one or more full path segments such as `/api` or `/mcp`, without a trailing slash or template variables. A request matches when its path equals the prefix or continues it with a `/`, so `/mcp` matches `/mcp` and `/mcp/tools` but not `/mcpx`.",
+      "pattern": "^(/|(/[^/{}?#;\\s]+)+)$"
+    },
+    "HostPattern": {
+      "description": "Host name an exposed adapter answers on, without a port: exact (`mcp.acme.com`) or with one leading wildcard label (`*.acme.com`), or a single Mustache expression resolved from `binds` at startup (`{{CUSTOM_DOMAIN}}`).",
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^(\\*\\.)?([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)(\\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$"
+        },
+        {
+          "type": "string",
+          "pattern": "^\\{\\{\\s*[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)?\\s*\\}\\}$"
+        }
+      ]
+    },
+    "HostPatterns": {
+      "type": "array",
+      "description": "Host names this adapter answers on. Omitted means any host that no other adapter on the same address and port declares. Adapters that share an address and port are routed by host first, then by `path`. An exact name takes precedence over a wildcard.",
+      "items": {
+        "$ref": "#/$defs/HostPattern"
+      },
+      "minItems": 1,
+      "uniqueItems": true
     },
     "Info": {
       "type": "object",
@@ -795,7 +836,7 @@
         },
         "exposes": {
           "type": "array",
-          "description": "List of exposed server adapters. Inline adapters (rest/mcp/skill/control) or `ImportEntry` references to a shared exposes file.",
+          "description": "List of exposed server adapters. Inline adapters (rest/mcp/control) or `ImportEntry` references to a shared exposes file.",
           "items": {
             "oneOf": [
               {
@@ -803,9 +844,6 @@
               },
               {
                 "$ref": "#/$defs/ExposesMcp"
-              },
-              {
-                "$ref": "#/$defs/ExposesSkill"
               },
               {
                 "$ref": "#/$defs/ExposesControl"
@@ -1047,6 +1085,13 @@
           "minimum": 1,
           "maximum": 65535
         },
+        "path": {
+          "$ref": "#/$defs/MountPath",
+          "description": "Mount prefix on the listener. Default: `/`. Lets several adapters share one `address` and `port`."
+        },
+        "hosts": {
+          "$ref": "#/$defs/HostPatterns"
+        },
         "namespace": {
           "$ref": "#/$defs/IdentifierKebab",
           "description": "Unique identifier for this exposed API"
@@ -1080,7 +1125,7 @@
     },
     "ExposesMcp": {
       "type": "object",
-      "description": "MCP Server exposition configuration. Exposes tools, resources and prompts over MCP transport (Streamable HTTP or stdio).",
+      "description": "MCP Server exposition configuration. Exposes tools, resources, prompts and skills over MCP transport (Streamable HTTP or stdio). At least one of 'tools' or 'skills' is required.",
       "properties": {
         "type": {
           "type": "string",
@@ -1102,6 +1147,13 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 65535
+        },
+        "path": {
+          "$ref": "#/$defs/MountPath",
+          "description": "Mount prefix on the listener. Default: `/`. Lets several adapters share one `address` and `port`."
+        },
+        "hosts": {
+          "$ref": "#/$defs/HostPatterns"
         },
         "namespace": {
           "$ref": "#/$defs/IdentifierKebab",
@@ -1163,12 +1215,22 @@
           },
           "description": "MCP prompt templates exposed by this server, keyed by prompt name.",
           "minProperties": 1
+        },
+        "skills": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/SkillName"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/McpSkill"
+          },
+          "description": "Agent Skills served by this server through the MCP Skills Extension (SEP-2640), keyed by skill name. Each skill is exposed as skill://<name>/SKILL.md plus its supporting files.",
+          "minProperties": 1
         }
       },
       "required": [
         "type",
-        "namespace",
-        "tools"
+        "namespace"
       ],
       "oneOf": [
         {
@@ -1207,6 +1269,21 @@
         }
       ],
       "allOf": [
+        {
+          "$comment": "Tools or skills. Kept inside allOf: a bare anyOf next to oneOf is misevaluated by networknt 1.x (Polychro).",
+          "anyOf": [
+            {
+              "required": [
+                "tools"
+              ]
+            },
+            {
+              "required": [
+                "skills"
+              ]
+            }
+          ]
+        },
         {
           "if": {
             "properties": {
@@ -1513,6 +1590,37 @@
           "type": "boolean",
           "description": "Whether the parameter is required. Defaults to true.",
           "default": true
+        },
+        "enum": {
+          "$ref": "#/$defs/McpToolInputEnum"
+        },
+        "format": {
+          "type": "string",
+          "description": "JSON Schema format hint for agents (e.g. date, date-time, email, uri, uuid). Not enforced by Ikanos."
+        },
+        "minimum": {
+          "type": "number",
+          "description": "Inclusive lower bound for a number or integer parameter. Advertised to MCP clients in the tool's inputSchema; not enforced by Ikanos, which does not validate tool arguments against it."
+        },
+        "maximum": {
+          "type": "number",
+          "description": "Inclusive upper bound for a number or integer parameter. Advertised to MCP clients in the tool's inputSchema; not enforced by Ikanos, which does not validate tool arguments against it."
+        },
+        "items": {
+          "$ref": "#/$defs/McpToolInputSchema",
+          "description": "Schema of each element of an array parameter."
+        },
+        "properties": {
+          "$ref": "#/$defs/McpToolInputProperties",
+          "description": "Properties of an object parameter."
+        },
+        "requiredProperties": {
+          "$ref": "#/$defs/McpToolInputRequiredList",
+          "description": "Names of the object parameter's properties that are required. Emitted as `required` inside the parameter's schema; the parameter-level `required` stays a boolean. Advertised to MCP clients in the tool's inputSchema; not enforced by Ikanos, which does not validate tool arguments against it."
+        },
+        "additionalProperties": {
+          "type": "boolean",
+          "description": "Whether an object parameter accepts properties beyond `properties`. Advertised to MCP clients in the tool's inputSchema; not enforced by Ikanos, which does not validate tool arguments against it."
         }
       },
       "required": [
@@ -1520,6 +1628,78 @@
         "description"
       ],
       "additionalProperties": false
+    },
+    "McpToolInputSchema": {
+      "type": "object",
+      "description": "Nested JSON Schema for MCP tool inputs (array items and object properties). A bounded subset of JSON Schema, copied as written into the tool's inputSchema. Unlike the parameter level, `required` here is the array of required property names. Like the parameter-level keywords, `enum`, `format`, `minimum`, `maximum`, `required` and `additionalProperties` are advertised to MCP clients and not enforced by Ikanos.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "string",
+            "number",
+            "integer",
+            "boolean",
+            "array",
+            "object"
+          ]
+        },
+        "description": {
+          "type": "string"
+        },
+        "enum": {
+          "$ref": "#/$defs/McpToolInputEnum"
+        },
+        "format": {
+          "type": "string"
+        },
+        "minimum": {
+          "type": "number"
+        },
+        "maximum": {
+          "type": "number"
+        },
+        "items": {
+          "$ref": "#/$defs/McpToolInputSchema"
+        },
+        "properties": {
+          "$ref": "#/$defs/McpToolInputProperties"
+        },
+        "required": {
+          "$ref": "#/$defs/McpToolInputRequiredList"
+        },
+        "additionalProperties": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    "McpToolInputProperties": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "$ref": "#/$defs/McpToolInputSchema"
+      }
+    },
+    "McpToolInputRequiredList": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      }
+    },
+    "McpToolInputEnum": {
+      "type": "array",
+      "description": "Allowed values, written as strings. For a number, integer or boolean parameter, each value is emitted with that type. Advertised to MCP clients in the tool's inputSchema; not enforced by Ikanos, which does not validate tool arguments against it.",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      }
     },
     "McpResource": {
       "type": "object",
@@ -1836,6 +2016,83 @@
       ],
       "additionalProperties": false
     },
+    "McpSkill": {
+      "type": "object",
+      "description": "An Agent Skill served over MCP (SEP-2640). The engine renders SKILL.md from these fields: the frontmatter always comes from the spec, and the body comes from an authored SKILL.md in 'location' when present, otherwise it is generated.",
+      "properties": {
+        "description": {
+          "type": "string",
+          "maxLength": 1024,
+          "description": "What the skill does and when to use it: activation cues, the workflow it guides and the expected outcome. Used for agent discovery."
+        },
+        "license": {
+          "type": "string",
+          "description": "License identifier (e.g., MIT, Apache-2.0)"
+        },
+        "compatibility": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Compatibility notes and requirements"
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Arbitrary key-value metadata (author, category, tags, ecosystem, etc.)"
+        },
+        "allowed-tools": {
+          "type": "string",
+          "maxLength": 1024,
+          "description": "Space-delimited list of pre-approved tool names (Agent Skills Spec). Hosts treat it as a request, not a grant, for skills served over MCP."
+        },
+        "argument-hint": {
+          "type": "string",
+          "description": "Hint text shown when agents invoke this skill via slash command (Agent Skills Spec)"
+        },
+        "user-invocable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether agents can invoke this skill as a slash command (Agent Skills Spec)"
+        },
+        "disable-model-invocation": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether to prevent auto-loading this skill based on context (Agent Skills Spec)"
+        },
+        "location": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^file:///",
+          "description": "file:/// URI to a curated directory of skill files (an optional authored SKILL.md, instruction files, references, scripts). An absolute URI (file:///opt/skills/fleet-ops) names the directory directly. A relative URI (file:///./skills/fleet-ops) is resolved against the working directory of the Ikanos process, as for 'binds', so it depends on where 'ikanos serve' is launched. The directory must exist and be readable at startup, or the capability fails to start. Dotfiles, dot-directories and editor backups are not published; symlinks are rejected. Required when 'instructions' is declared."
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/IdentifierKebab"
+          },
+          "uniqueItems": true,
+          "description": "Names of tools declared on this same MCP server that the skill depends on. Validated at load, never rendered into SKILL.md. Omit for a guidance-only skill."
+        },
+        "instructions": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/IdentifierKebab"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-][A-Za-z0-9._-]*(/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$",
+            "description": "Path of the instruction file, relative to 'location'."
+          },
+          "description": "Instruction files keyed by name, each a path relative to 'location'. Linked from a generated SKILL.md body.",
+          "minProperties": 1
+        }
+      },
+      "required": [
+        "description"
+      ],
+      "additionalProperties": false
+    },
     "ExposedResource": {
       "type": "object",
       "description": "An exposed resource",
@@ -2116,8 +2373,8 @@
         },
         "baseUri": {
           "type": "string",
-          "description": "Root URL of the upstream API (scheme + host + optional base path). No path parameters allowed here \u2014 use `ConsumedHttpResource.path` for per-resource segments. Example: `https://api.notion.com/v1`.",
-          "pattern": "^https?://[^/]+(/[^{]*)?$"
+          "description": "Root URL of the upstream API (scheme + host + optional base path). No path parameters allowed here \u2014 use `ConsumedHttpResource.path` for per-resource segments. Example: `https://api.notion.com/v1`. Placeholders (`https://{{HOST}}/v1`, or a whole value such as `{{API_URL}}`) are resolved once at load time from `binds`, never from call parameters; an unbound placeholder fails the capability at startup.",
+          "pattern": "^(https?://[^/]+(/[^{]*)?|\\{\\{[A-Za-z0-9_.-]+\\}\\})$"
         },
         "inputParameters": {
           "type": "object",
@@ -2389,8 +2646,8 @@
         },
         "endpoint": {
           "type": "string",
-          "description": "Streamable HTTP endpoint of the upstream MCP server. No path composition is applied. Example: `https://billing.example.com/mcp`.",
-          "pattern": "^https?://[^/]+(/.*)?$"
+          "description": "Streamable HTTP endpoint of the upstream MCP server. No path composition is applied. Example: `https://billing.example.com/mcp`. Placeholders (`https://{{HOST}}/mcp`, or a whole value such as `{{MCP_URL}}`) are resolved once at load time from `binds`, never from call parameters; an unbound placeholder, or a resolved value that is not `https://` outside localhost, fails the capability at startup.",
+          "pattern": "^(https?://[^/]+(/.*)?|\\{\\{[A-Za-z0-9_.-]+\\}\\})$"
         },
         "authentication": {
           "$ref": "#/$defs/Authentication",
@@ -2594,7 +2851,7 @@
               "type": "string",
               "format": "uri",
               "pattern": "^file:///",
-              "description": "file:/// URI pointing to the scripts directory. Follows the same convention as ExposedSkill.location \u2014 a directory root from which 'file' and 'dependencies' are resolved as relative paths. Optional when 'management.scripting.defaultLocation' is set in the Control Port \u2014 the engine falls back to the default."
+              "description": "file:/// URI pointing to the scripts directory. Follows the same convention as McpSkill.location \u2014 a directory root from which 'file' and 'dependencies' are resolved as relative paths. Optional when 'management.scripting.defaultLocation' is set in the Control Port \u2014 the engine falls back to the default."
             },
             "file": {
               "type": "string",
@@ -2748,7 +3005,7 @@
         },
         "value": {
           "type": "string",
-          "description": "Content of this part. For file parts, this is the base64-encoded or raw file content."
+          "description": "Content of this part, Mustache-rendered. Sent as UTF-8 text, or as decoded bytes when `encoding` is `base64`."
         },
         "filename": {
           "type": "string",
@@ -2757,6 +3014,11 @@
         "contentType": {
           "type": "string",
           "description": "MIME type for this part (e.g. `image/png`, `application/pdf`). Required when uploading a file."
+        },
+        "encoding": {
+          "type": "string",
+          "enum": ["base64"],
+          "description": "How `value` is encoded. With `base64`, the part is sent as the decoded bytes of the rendered `value`, so a binary file can be passed as a base64 string. Without it, `value` is sent as UTF-8 text."
         }
       },
       "required": [
@@ -2993,170 +3255,6 @@
         "type",
         "authorizationServerUri",
         "resource"
-      ],
-      "additionalProperties": false
-    },
-    "ExposesSkill": {
-      "type": "object",
-      "description": "Skill server adapter \u2014 metadata and catalog layer. Skills declare tools derived from sibling api or mcp adapters or defined as local file instructions. Does not execute tools.",
-      "properties": {
-        "type": {
-          "type": "string",
-          "const": "skill"
-        },
-        "address": {
-          "$ref": "#/$defs/Address"
-        },
-        "port": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 65535
-        },
-        "namespace": {
-          "$ref": "#/$defs/IdentifierKebab",
-          "description": "Unique identifier for this skill server"
-        },
-        "description": {
-          "type": "string",
-          "description": "Description of this skill server's purpose"
-        },
-        "authentication": {
-          "$ref": "#/$defs/Authentication",
-          "description": "Authentication required on incoming requests to this skill server. Protects the skills catalog and tool invocation endpoints."
-        },
-        "skills": {
-          "type": "object",
-          "propertyNames": {
-            "$ref": "#/$defs/IdentifierKebab"
-          },
-          "additionalProperties": {
-            "$ref": "#/$defs/ExposedSkill"
-          },
-          "description": "Skill definitions, keyed by skill name.",
-          "minProperties": 1
-        }
-      },
-      "required": [
-        "type",
-        "port",
-        "namespace",
-        "skills"
-      ],
-      "additionalProperties": false
-    },
-    "ExposedSkill": {
-      "type": "object",
-      "description": "A skill definition with full Agent Skills Spec frontmatter. Declares tools derived from sibling api or mcp adapters or defined as local file instructions, or stands alone as purely descriptive (no tools).",
-      "properties": {
-        "description": {
-          "type": "string",
-          "maxLength": 1024,
-          "description": "What the skill does and when to use it. Used for agent discovery."
-        },
-        "license": {
-          "type": "string",
-          "description": "License identifier (e.g., MIT, Apache-2.0)"
-        },
-        "compatibility": {
-          "type": "string",
-          "maxLength": 500,
-          "description": "Compatibility notes and requirements"
-        },
-        "metadata": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "string"
-          },
-          "description": "Arbitrary key-value metadata (author, category, tags, ecosystem, etc.)"
-        },
-        "allowed-tools": {
-          "type": "string",
-          "maxLength": 1024,
-          "description": "Space-delimited list of pre-approved tool names (Agent Skills Spec)"
-        },
-        "argument-hint": {
-          "type": "string",
-          "description": "Hint text shown when agents invoke this skill via slash command (Agent Skills Spec)"
-        },
-        "user-invocable": {
-          "type": "boolean",
-          "default": true,
-          "description": "Whether agents can invoke this skill as a slash command (Agent Skills Spec)"
-        },
-        "disable-model-invocation": {
-          "type": "boolean",
-          "default": false,
-          "description": "Whether to prevent auto-loading this skill based on context (Agent Skills Spec)"
-        },
-        "location": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^file:///",
-          "description": "file:/// URI to a directory containing SKILL.md and supporting files. Required when any tool uses 'instruction'."
-        },
-        "tools": {
-          "type": "object",
-          "propertyNames": {
-            "$ref": "#/$defs/IdentifierKebab"
-          },
-          "additionalProperties": {
-            "$ref": "#/$defs/SkillTool"
-          },
-          "description": "Tools declared by this skill, keyed by tool name.",
-          "minProperties": 1
-        }
-      },
-      "required": [
-        "description"
-      ],
-      "additionalProperties": false
-    },
-    "SkillTool": {
-      "type": "object",
-      "description": "A tool declared within a skill. Exactly one of 'from' (derived from a sibling api or mcp adapter) or 'instruction' (local file path relative to the skill's location) must be specified.",
-      "properties": {
-        "description": {
-          "type": "string",
-          "description": "What the tool does. Used for agent discovery."
-        },
-        "from": {
-          "type": "object",
-          "description": "Derive this tool from a sibling api or mcp adapter.",
-          "properties": {
-            "sourceNamespace": {
-              "type": "string",
-              "description": "Namespace of a sibling exposes[] entry of type api or mcp"
-            },
-            "action": {
-              "type": "string",
-              "description": "Operation name (api) or tool name (mcp) in the source adapter"
-            }
-          },
-          "required": [
-            "sourceNamespace",
-            "action"
-          ],
-          "additionalProperties": false
-        },
-        "instruction": {
-          "type": "string",
-          "description": "File path relative to the skill's location directory containing the tool instruction content"
-        }
-      },
-      "required": [
-        "description"
-      ],
-      "oneOf": [
-        {
-          "required": [
-            "from"
-          ]
-        },
-        {
-          "required": [
-            "instruction"
-          ]
-        }
       ],
       "additionalProperties": false
     },
